@@ -1,4 +1,5 @@
-import androidx.compose.ui.ExperimentalComposeUiApi
+// Copyright 2026, compose-miuix-ui contributors
+// SPDX-License-Identifier: Apache-2.0
 import androidx.compose.ui.window.ComposeViewport
 import com.miband.app.App
 

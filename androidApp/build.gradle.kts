@@ -1,3 +1,5 @@
+// Copyright 2026, compose-miuix-ui contributors
+// SPDX-License-Identifier: Apache-2.0
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
@@ -33,9 +35,10 @@ android {
     ndkVersion = "30.0.14904198"
     buildToolsVersion = BuildConfig.BUILD_TOOLS_VERSION
     compileSdk {
-        version = release(BuildConfig.COMPILE_SDK) {
-            minorApiLevel = BuildConfig.COMPILE_SDK_MINOR
-        }
+        version =
+            release(BuildConfig.COMPILE_SDK) {
+                minorApiLevel = BuildConfig.COMPILE_SDK_MINOR
+            }
     }
     defaultConfig {
         applicationId = BuildConfig.APPLICATION_ID

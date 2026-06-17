@@ -6,7 +6,7 @@ plugins {
 
 val composeKtlintRules = "io.nlopez.compose.rules:ktlint:0.6.1"
 val copyrightFile = rootProject.file("spotless/copyright.txt")
-val copyrightDelimiter = "^(?![ \\\\t]*(?:\\/\\/|\\/\\*)).*[\\\\w].*$"
+val copyrightDelimiter = "^(?![ \\t]*(?:\\/\\/|\\/\\*)).*[\\w].*$"
 
 spotless {
     lineEndings = LineEnding.PLATFORM_NATIVE

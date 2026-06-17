@@ -1,3 +1,5 @@
+// Copyright 2026, compose-miuix-ui contributors
+// SPDX-License-Identifier: Apache-2.0
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 plugins {
@@ -14,9 +16,10 @@ kotlin {
         androidResources.enable = true
         buildToolsVersion = BuildConfig.BUILD_TOOLS_VERSION
         compileSdk {
-            version = release(BuildConfig.COMPILE_SDK) {
-                minorApiLevel = BuildConfig.COMPILE_SDK_MINOR
-            }
+            version =
+                release(BuildConfig.COMPILE_SDK) {
+                    minorApiLevel = BuildConfig.COMPILE_SDK_MINOR
+                }
         }
         minSdk = BuildConfig.MIN_SDK
         namespace = "com.miband.app.shared"

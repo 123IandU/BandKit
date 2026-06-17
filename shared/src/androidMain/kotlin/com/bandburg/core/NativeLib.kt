@@ -1,6 +1,5 @@
 // Copyright 2026, compose-miuix-ui contributors
 // SPDX-License-Identifier: Apache-2.0
-
 package com.bandburg.core
 
 /**
@@ -27,7 +26,7 @@ object NativeLib {
         name: String,
         addr: String,
         authkey: String,
-        connectType: Int
+        connectType: Int,
     ): Long
 
     /** Destroy a device session and release native resources. */
@@ -66,7 +65,7 @@ object NativeLib {
     external fun nativeHandleAuthStep2(
         handle: Long,
         deviceVerifyJson: String,
-        forceAndroid: Boolean
+        forceAndroid: Boolean,
     ): ByteArray
 
     /**
