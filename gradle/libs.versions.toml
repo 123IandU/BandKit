@@ -1,0 +1,24 @@
+[versions]
+agp = "9.2.1"
+kotlin = "2.4.0"
+kotlinx-serialization = "1.11.0"
+
+androidx-activity = "1.13.0"
+jetbrains-compose-multiplatform = "1.11.1"
+spotless = "8.6.0"
+rust-android = "0.10.1"
+
+[libraries]
+android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+spotless-plugin-gradle = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless" }
+
+androidx-activity = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+
+[plugins]
+androidApplication = { id = "com.android.application" }
+androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library" }
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform" }
+composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "jetbrains-compose-multiplatform" }
+rustAndroid = { id = "net.mullvad.rust-android", version.ref = "rust-android" }

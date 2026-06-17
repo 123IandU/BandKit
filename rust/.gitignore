@@ -1,0 +1,5 @@
+# Rust build artifacts
+/target/
+
+# Generated proto code (rebuilt from .proto files)
+pb/src/xiaomi/
