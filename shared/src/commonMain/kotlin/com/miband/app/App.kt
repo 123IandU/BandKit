@@ -332,7 +332,13 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             )
                             savedDevices = savedDevices + dev
                             saveSavedDevices(context, savedDevices)
-                            addLog("设备 ${dev.name} 保存成功", LogType.SUCCESS)
+                            addLog("设备 ${dev.name} 添加成功", LogType.SUCCESS)
+                            deviceName = ""
+                            deviceAddr = ""
+                            deviceAuthkey = ""
+                            deviceSarVersion = 1
+                            deviceConnectTypeBle = false
+                            deviceFormTab = 0
                             showAddDeviceDialog = false
                         },
                         onDismiss = {
@@ -623,7 +629,7 @@ private fun AddDeviceBottomSheet(
             modifier = Modifier.fillMaxWidth(),
             colors = ButtonDefaults.buttonColorsPrimary(),
         ) {
-            Text("保存设备")
+            Text("添加设备")
         }
 
         Spacer(modifier = Modifier.height(20.dp))
