@@ -150,9 +150,12 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 deviceSession = session
                 connectionStatus = ConnectionStatus.CONNECTED
                 addLog("${device.name} 连接成功", LogType.SUCCESS)
+                kotlinx.coroutines.delay(500)
+                addLog("正在获取设备信息...", LogType.INFO)
                 val info = withContext(IO) { manager.getDeviceInfo(session) }
                 deviceInfo = info
                 addLog("设备: ${info.model} (${info.firmwareVersion})", LogType.SUCCESS)
+                addLog("电量: ${info.batteryPercent}% | 存储: ${info.totalStorage}", LogType.SUCCESS)
             } catch (e: Exception) {
                 connectionStatus = ConnectionStatus.DISCONNECTED
                 addLog("连接失败: ${e.message}", LogType.ERROR)

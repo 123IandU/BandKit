@@ -186,11 +186,19 @@ actual class BandBurgManager {
                 if (type == 1 && id == 4) {
                     val authDeferred = authComplete[handle]
                     if (authDeferred != null) {
-                        val payload = packet["authDeviceVerify"] ?: packet["device_verify"]
+                        val payload = packet["authDeviceVerify"]
+                            ?: packet["device_verify"]
+                            ?: packet["account"]?.let { acc ->
+                                (acc as? kotlinx.serialization.json.JsonObject)
+                                    ?.get("auth_device_verify")
+                                    ?: (acc as? kotlinx.serialization.json.JsonObject)
+                                        ?.get("device_verify")
+                            }
                         if (payload != null) {
                             Log.d(TAG, "Received DeviceVerify, sending AppConfirm")
                             try {
                                 val deviceVerifyJson = payload.toString()
+                                Log.d(TAG, "DeviceVerify JSON: $deviceVerifyJson")
                                 val appConfirmBytes = NativeLib.nativeHandleAuthStep2(handle, deviceVerifyJson, true)
                                 val conn = connections[handle]
                                 if (conn != null && appConfirmBytes.isNotEmpty()) {
@@ -202,6 +210,8 @@ actual class BandBurgManager {
                                 Log.e(TAG, "Failed to send AppConfirm", e)
                             }
                             authDeferred.complete(true)
+                        } else {
+                            Log.w(TAG, "DeviceVerify payload not found in packet: $packet")
                         }
                     }
                 }

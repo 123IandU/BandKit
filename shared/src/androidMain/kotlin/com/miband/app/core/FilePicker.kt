@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.miband.app.core
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
 object FilePickerState {
     var pendingResult: ((PickedFile?) -> Unit)? = null
-    var lastPickedUri: Uri? = null
 }
 
 actual fun createFilePicker(): Any = Unit
@@ -25,17 +26,17 @@ actual suspend fun pickFileFromPicker(picker: Any): PickedFile? = suspendCorouti
     }
 
     try {
-        val intent = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
             type = "*/*"
-            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            addCategory(Intent.CATEGORY_OPENABLE)
         }
-        val activity = context as? android.app.Activity
+        val activity = context as? Activity
         if (activity == null) {
             cont.resume(null)
             return@suspendCoroutine
         }
         @Suppress("DEPRECATION")
-        activity.startActivityForResult(intent, 9999)
+        activity.startActivityForResult(Intent.createChooser(intent, "选择文件"), 9999)
     } catch (e: Exception) {
         FilePickerState.pendingResult = null
         cont.resume(null)
