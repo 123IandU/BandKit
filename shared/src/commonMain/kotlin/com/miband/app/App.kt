@@ -39,7 +39,6 @@ import com.miband.app.core.PlatformContextProvider
 import com.miband.app.core.ScannedDevice
 import com.miband.app.core.createBandBurgManager
 import com.miband.app.core.createBluetoothScanner
-
 import com.miband.app.core.currentTimeMillis
 import com.miband.app.core.formatTimestamp
 import com.miband.app.core.initBandBurgContext
@@ -252,7 +251,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                         when (activeTab) {
                             0 -> WatchfaceSection(watchfaces, deviceSession, manager, addLog) { watchfaces = it }
                             1 -> AppSection(apps, deviceSession, manager, addLog) { apps = it }
-                            2 -> InstallSection(deviceSession, manager) { msg, type -> addLog(msg, type) }
+                            2 -> InstallSection(deviceSession, manager, context) { msg, type -> addLog(msg, type) }
                         }
                     }
                     if (showLogs) {
@@ -873,6 +872,7 @@ private fun AppSection(
 private fun InstallSection(
     session: com.miband.app.models.DeviceSession?,
     manager: BandBurgManager,
+    context: Any,
     onLog: (String, LogType) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -880,7 +880,6 @@ private fun InstallSection(
     var installProgress by remember { mutableStateOf(-1f) }
     var installMessage by remember { mutableStateOf("") }
     var isInstalling by remember { mutableStateOf(false) }
-    val filePicker = remember { createFilePicker() }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -894,7 +893,7 @@ private fun InstallSection(
                 Button(
                     onClick = {
                         scope.launch {
-                            val file = pickFileFromPicker(filePicker)
+                            val file = pickFileFromPicker(context)
                             if (file != null) {
                                 selectedFile = file
                                 onLog("已选择: ${file.name} (${file.data.size} 字节)", LogType.INFO)
