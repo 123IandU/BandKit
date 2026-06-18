@@ -56,13 +56,19 @@ import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Switch
-import top.yukonga.miuix.kmp.basic.TabRow
+import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
@@ -93,9 +99,8 @@ private fun AppContent(modifier: Modifier = Modifier) {
     val scanner = remember { createBluetoothScanner() }
     val controller = remember { ThemeController(ColorSchemeMode.System) }
 
-    var activeNav by remember { mutableIntStateOf(0) }
     var activeTab by remember { mutableIntStateOf(0) }
-    var sidebarOpen by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var connectionStatus by remember { mutableStateOf(ConnectionStatus.DISCONNECTED) }
     var deviceSession by remember { mutableStateOf<com.miband.app.models.DeviceSession?>(null) }
     var deviceInfo by remember { mutableStateOf(DeviceInfo()) }
@@ -172,23 +177,26 @@ private fun AppContent(modifier: Modifier = Modifier) {
     }
 
     MiuixTheme(controller = controller) {
-        Scaffold(
-            modifier = modifier.fillMaxSize(),
-            topBar = {
-                SmallTopAppBar(
-                    title = "BANDBURG",
-                    actions = {
-                        Text(
-                            text = "\uD83D\uDCCB",
-                            fontSize = 20.sp,
-                            modifier = Modifier.clickable { sidebarOpen = !sidebarOpen },
-                        )
-                    },
-                )
-            },
-        ) { innerPadding ->
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                Column(modifier = Modifier.fillMaxSize()) {
+        if (showSettings) {
+            SettingsScreen(onBack = { showSettings = false })
+        } else {
+            Scaffold(
+                modifier = modifier.fillMaxSize(),
+                topBar = {
+                    SmallTopAppBar(
+                        title = "BANDBURG",
+                        actions = {
+                            IconButton(onClick = { showSettings = true }) {
+                                Icon(
+                                    imageVector = MiuixIcons.Settings,
+                                    contentDescription = "设置",
+                                )
+                            }
+                        },
+                    )
+                },
+            ) { innerPadding ->
+                Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -229,7 +237,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             }
                         }
                         item {
-                            TabRow(
+                            TabRowWithContour(
                                 tabs = listOf("表盘", "应用", "安装"),
                                 selectedTabIndex = activeTab,
                                 onTabSelected = { activeTab = it },
@@ -246,12 +254,6 @@ private fun AppContent(modifier: Modifier = Modifier) {
                         item { Footer() }
                     }
                 }
-                if (sidebarOpen) {
-                    SidebarOverlay(activeNav, {
-                        activeNav = it
-                        sidebarOpen = false
-                    }) { sidebarOpen = false }
-                }
                 if (showAddDeviceDialog) {
                     AddDeviceBottomSheet(
                         deviceFormTab, { deviceFormTab = it },
@@ -266,7 +268,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             isScanning = true
                             addLog("开始扫描附近蓝牙设备...", LogType.INFO)
                             scanner.startScan(
-                                onDeviceFound = { dev -> scannedDevices = scannedDevices + dev },
+                                onDeviceFound = { dev -> if (scannedDevices.none { it.address == dev.address }) scannedDevices = scannedDevices + dev },
                                 onScanComplete = {
                                     isScanning = false
                                     addLog("扫描完成 (如无设备请检查蓝牙权限)", LogType.INFO)
@@ -312,29 +314,52 @@ private fun AppContent(modifier: Modifier = Modifier) {
     }
 }
 
-// ─── SidebarOverlay ───
+// ─── SettingsScreen ───
 @Composable
-private fun SidebarOverlay(activeNav: Int, onNavClick: (Int) -> Unit, onDismiss: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier.fillMaxSize()
-                .clickable { onDismiss() },
-        )
-        Column(
-            modifier = Modifier.width(200.dp).fillMaxSize()
-                .padding(16.dp),
+private fun SettingsScreen(onBack: () -> Unit) {
+    Scaffold(
+        topBar = {
+            SmallTopAppBar(
+                title = "设置",
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = MiuixIcons.Back,
+                            contentDescription = "返回",
+                        )
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
-            listOf("设备", "脚本", "关于").forEachIndexed { i, label ->
-                val sel = activeNav == i
-                Text(
-                    label,
-                    fontSize = 16.sp,
-                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 8.dp)
-                        .clickable { onNavClick(i) }
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-                )
+            item { Spacer(modifier = Modifier.height(4.dp)) }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("设备管理", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("蓝牙扫描设置", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                        SimpleDivider()
+                        Text("SAR 版本默认值", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                        SimpleDivider()
+                        Text("连接超时时间", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("关于", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("版本: 1.0.0", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                        SimpleDivider()
+                        Text("Powered by ASTROBOX", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                    }
+                }
             }
         }
     }
@@ -465,7 +490,7 @@ private fun AddDeviceBottomSheet(
         title = "添加新设备",
         onDismissRequest = onDismiss,
     ) {
-        TabRow(
+        TabRowWithContour(
             tabs = listOf("直接添加", "扫描附近设备"),
             selectedTabIndex = tab,
             onTabSelected = onTabChange,
@@ -517,10 +542,16 @@ private fun AddDeviceBottomSheet(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text("附近蓝牙设备", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        Button(
-                            onClick = { if (isScanning) onStopScan() else onStartScan() },
-                        ) {
-                            Text(if (isScanning) "停止扫描" else "开始扫描")
+                        if (isScanning) {
+                            InfiniteProgressIndicator(
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                        } else {
+                            Text(
+                                "刷新",
+                                fontSize = 14.sp,
+                                modifier = Modifier.clickable { onStartScan() },
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
