@@ -64,6 +64,7 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Switch
+import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
@@ -102,6 +103,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
 
     var activeTab by remember { mutableIntStateOf(0) }
     var showSettings by remember { mutableStateOf(false) }
+    var showLogs by remember { mutableStateOf(true) }
     var connectionStatus by remember { mutableStateOf(ConnectionStatus.DISCONNECTED) }
     var deviceSession by remember { mutableStateOf<com.miband.app.models.DeviceSession?>(null) }
     var deviceInfo by remember { mutableStateOf(DeviceInfo()) }
@@ -179,7 +181,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
 
     MiuixTheme(controller = controller) {
         if (showSettings) {
-            SettingsScreen(onBack = { showSettings = false })
+            SettingsScreen(onBack = { showSettings = false }, showLogs = showLogs, onShowLogsChange = { showLogs = it })
         } else {
             Scaffold(
                 modifier = modifier.fillMaxSize(),
@@ -238,7 +240,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             }
                         }
                         item {
-                            TabRowWithContour(
+                            TabRow(
                                 tabs = listOf("表盘", "应用", "安装"),
                                 selectedTabIndex = activeTab,
                                 onTabSelected = { activeTab = it },
@@ -251,7 +253,9 @@ private fun AppContent(modifier: Modifier = Modifier) {
                                 2 -> InstallSection(deviceSession, manager) { msg, type -> addLog(msg, type) }
                             }
                         }
-                        item { LogSection(logs) }
+                        if (showLogs) {
+                            item { LogSection(logs) }
+                        }
                         item { Footer() }
                     }
                 }
@@ -357,7 +361,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
 
 // ─── SettingsScreen ───
 @Composable
-private fun SettingsScreen(onBack: () -> Unit) {
+private fun SettingsScreen(onBack: () -> Unit, showLogs: Boolean, onShowLogsChange: (Boolean) -> Unit) {
     Scaffold(
         topBar = {
             SmallTopAppBar(
@@ -388,6 +392,22 @@ private fun SettingsScreen(onBack: () -> Unit) {
                         Text("SAR 版本默认值", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
                         SimpleDivider()
                         Text("连接超时时间", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                    }
+                }
+            }
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("显示设置", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("显示操作日志", fontSize = 14.sp)
+                            Switch(checked = showLogs, onCheckedChange = onShowLogsChange)
+                        }
                     }
                 }
             }
@@ -923,24 +943,27 @@ private fun InstallSection(
 @Composable
 private fun LogSection(logs: List<LogEntry>) {
     Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(16.dp).height(200.dp)) {
             Text("操作日志", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
             SimpleDivider()
-            logs.forEach { entry ->
-                val color = when (entry.type) {
-                    LogType.SUCCESS -> MiuixTheme.colorScheme.primary
-                    LogType.ERROR -> MiuixTheme.colorScheme.error
-                    LogType.WARNING -> MiuixTheme.colorScheme.error.copy(alpha = 0.6f)
-                    LogType.INFO -> MiuixTheme.colorScheme.onSurface
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(logs.size) { index ->
+                    val entry = logs[index]
+                    val color = when (entry.type) {
+                        LogType.SUCCESS -> MiuixTheme.colorScheme.primary
+                        LogType.ERROR -> MiuixTheme.colorScheme.error
+                        LogType.WARNING -> MiuixTheme.colorScheme.error.copy(alpha = 0.6f)
+                        LogType.INFO -> MiuixTheme.colorScheme.onSurface
+                    }
+                    val time = formatTimestamp(entry.timestamp)
+                    Text(
+                        "[$time] ${entry.message}",
+                        fontSize = 12.sp,
+                        color = color,
+                        modifier = Modifier.padding(vertical = 2.dp),
+                    )
                 }
-                val time = formatTimestamp(entry.timestamp)
-                Text(
-                    "[$time] ${entry.message}",
-                    fontSize = 12.sp,
-                    color = color,
-                    modifier = Modifier.padding(vertical = 2.dp),
-                )
             }
         }
     }
