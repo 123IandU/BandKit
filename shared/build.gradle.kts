@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.kotlinxSerialization)
     id("module.kotlin-jvm-toolchain")
     id("module.spotless")
 }
@@ -37,9 +38,10 @@ kotlin {
             implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.2")
             implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.2")
             implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.2")
+            implementation(libs.kotlinx.serialization.json)
         }
         androidMain.dependencies {
-            // Android-specific dependencies
+            implementation(compose.uiTooling)
         }
         val desktopMain by getting
         desktopMain.dependencies {

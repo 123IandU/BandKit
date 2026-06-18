@@ -20,8 +20,8 @@ cargo {
 }
 
 val rustJniLibsDir = layout.buildDirectory.dir("rustJniLibs/android")
+
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
-    inputs.dir(rustJniLibsDir)
     dependsOn("cargoBuild")
 }
 
