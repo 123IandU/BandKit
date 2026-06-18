@@ -39,7 +39,7 @@ import com.miband.app.core.PlatformContextProvider
 import com.miband.app.core.ScannedDevice
 import com.miband.app.core.createBandBurgManager
 import com.miband.app.core.createBluetoothScanner
-import com.miband.app.core.createFilePicker
+
 import com.miband.app.core.currentTimeMillis
 import com.miband.app.core.formatTimestamp
 import com.miband.app.core.initBandBurgContext
@@ -48,6 +48,7 @@ import com.miband.app.core.loadSavedDevices
 import com.miband.app.core.loadShowLogs
 import com.miband.app.core.pickFileFromPicker
 import com.miband.app.core.saveSavedDevices
+import com.miband.app.core.saveShowLogs
 import com.miband.app.models.ConnectionStatus
 import com.miband.app.models.DeviceInfo
 import com.miband.app.models.InstalledApp
@@ -107,6 +108,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
 
     var activeTab by remember { mutableIntStateOf(0) }
     var showLogs by remember { mutableStateOf(loadShowLogs(context)) }
+    var showSettings by remember { mutableStateOf(false) }
     var connectionStatus by remember { mutableStateOf(ConnectionStatus.DISCONNECTED) }
     var deviceSession by remember { mutableStateOf<com.miband.app.models.DeviceSession?>(null) }
     var deviceInfo by remember { mutableStateOf(DeviceInfo()) }
@@ -189,7 +191,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 SmallTopAppBar(
                     title = "BANDBURG",
                     actions = {
-                        IconButton(onClick = { launchSettingsActivity(context) }) {
+                        IconButton(onClick = { showSettings = true }) {
                             Icon(
                                 imageVector = MiuixIcons.Settings,
                                 contentDescription = "设置",
@@ -354,7 +356,48 @@ private fun AppContent(modifier: Modifier = Modifier) {
                     },
                 )
             }
+            if (showSettings) {
+                SettingsBottomSheet(
+                    showLogs = showLogs,
+                    onShowLogsChange = {
+                        showLogs = it
+                        saveShowLogs(context, it)
+                    },
+                    onDismiss = { showSettings = false },
+                )
+            }
         }
+    }
+}
+
+// ─── SettingsBottomSheet ───
+@Composable
+private fun SettingsBottomSheet(
+    showLogs: Boolean,
+    onShowLogsChange: (Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    OverlayBottomSheet(
+        show = true,
+        title = "设置",
+        onDismissRequest = onDismiss,
+    ) {
+        Text("显示设置", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("显示操作日志", fontSize = 14.sp)
+            Switch(checked = showLogs, onCheckedChange = onShowLogsChange)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("关于", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("版本: 1.0.0", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+        SimpleDivider()
+        Text("Powered by ASTROBOX", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
     }
 }
 
@@ -381,19 +424,6 @@ fun SettingsScreen(onBack: () -> Unit, showLogs: Boolean = true, onShowLogsChang
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
-            item {
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("设备管理", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text("蓝牙扫描设置", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
-                        SimpleDivider()
-                        Text("SAR 版本默认值", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
-                        SimpleDivider()
-                        Text("连接超时时间", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
-                    }
-                }
-            }
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
