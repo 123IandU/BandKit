@@ -104,14 +104,19 @@ actual class BandBurgManager {
 
         connections[handle] = Connection(socket, inputStream, outputStream, readerThread)
 
-        performHandshake(session)
+        val authOk = performHandshake(session)
+        if (!authOk) {
+            Log.e(TAG, "Auth failed, disconnecting")
+            disconnect(session)
+            throw IllegalStateException("Authentication failed - check authkey")
+        }
 
         return session
     }
 
-    private suspend fun performHandshake(session: DeviceSession) {
+    private suspend fun performHandshake(session: DeviceSession): Boolean {
         try {
-            val conn = connections[session.handle] ?: return
+            val conn = connections[session.handle] ?: return false
 
             val sppHello = NativeLib.nativeBuildSppHello(session.handle)
             if (sppHello.isNotEmpty()) {
@@ -135,18 +140,21 @@ actual class BandBurgManager {
             val authDeferred = CompletableDeferred<Boolean>()
             authComplete[session.handle] = authDeferred
 
-            try {
+            return try {
                 withTimeout(10000L) {
                     authDeferred.await()
                 }
                 Log.d(TAG, "Auth handshake completed")
+                true
             } catch (e: Exception) {
-                Log.w(TAG, "Auth handshake timed out, proceeding anyway")
+                Log.w(TAG, "Auth handshake timed out")
+                false
             } finally {
                 authComplete.remove(session.handle)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Handshake failed", e)
+            return false
         }
     }
 
