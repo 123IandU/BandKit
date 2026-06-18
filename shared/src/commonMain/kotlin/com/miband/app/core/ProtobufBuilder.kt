@@ -109,7 +109,58 @@ object ProtobufBuilder {
         return buildWearPacket(typeId = 20, commandId = 3, payloadBytes = payload)
     }
 
-    // === File installation (Mass type=19) ===
+    // === File installation ===
+
+    /** Build watchface install prepare request (WatchFace type=4, id=4) */
+    fun buildWatchfaceInstallRequest(watchfaceId: String, fileSize: Int): ByteArray {
+        val prepareInfo = ByteArrayBuilder()
+        writeFieldBytes(1, watchfaceId.encodeToByteArray(), prepareInfo)
+        writeFieldVarint(2, fileSize, prepareInfo)
+        writeFieldVarint(3, 65536, prepareInfo)
+
+        val watchFacePayload = ByteArrayBuilder()
+        writeFieldBytes(6, prepareInfo.toByteArray(), watchFacePayload)
+
+        return buildWearPacket(typeId = 4, commandId = 4, payloadBytes = watchFacePayload.toByteArray())
+    }
+
+    /** Build third-party app install prepare request (ThirdpartyApp type=20, id=1) */
+    fun buildThirdPartyAppInstallRequest(packageName: String, fileSize: Int): ByteArray {
+        val installReq = ByteArrayBuilder()
+        writeFieldBytes(1, packageName.encodeToByteArray(), installReq)
+        writeFieldVarint(2, 114514, installReq)
+        writeFieldVarint(3, fileSize, installReq)
+
+        val thirdPartyPayload = ByteArrayBuilder()
+        writeFieldBytes(2, installReq.toByteArray(), thirdPartyPayload)
+
+        return buildWearPacket(typeId = 20, commandId = 1, payloadBytes = thirdPartyPayload.toByteArray())
+    }
+
+    /** Build firmware install prepare request (System type=2, id=PrepareOta) */
+    fun buildFirmwareInstallRequest(fileMd5: ByteArray, fileSize: Int): ByteArray {
+        val md5Hex = fileMd5.joinToString("") { byte ->
+            val v = byte.toInt() and 0xFF
+            val hi = (v shr 4) and 0x0F
+            val lo = v and 0x0F
+            val hiChar = if (hi < 10) ('0' + hi) else ('a' + hi - 10)
+            val loChar = if (lo < 10) ('0' + lo) else ('a' + lo - 10)
+            "$hiChar$loChar"
+        }
+        val otaReq = ByteArrayBuilder()
+        writeFieldVarint(1, 1, otaReq) // force = true
+        writeFieldVarint(2, 0, otaReq) // type = All
+        writeFieldBytes(3, "99.99.99".encodeToByteArray(), otaReq)
+        writeFieldBytes(4, md5Hex.encodeToByteArray(), otaReq)
+        writeFieldBytes(5, "Miband Firmware Update".encodeToByteArray(), otaReq)
+
+        val systemPayload = ByteArrayBuilder()
+        writeFieldBytes(8, otaReq.toByteArray(), systemPayload)
+
+        return buildWearPacket(typeId = 2, commandId = 4, payloadBytes = systemPayload.toByteArray())
+    }
+
+    // === Legacy mass install (kept for compatibility) ===
 
     /** Build prepare install request (Mass type=19, id=1) */
     fun buildPrepareInstall(resType: Int, fileSize: Int, packageName: String?): ByteArray {

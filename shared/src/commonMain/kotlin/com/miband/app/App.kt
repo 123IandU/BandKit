@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.miband.app
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +26,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,7 +43,9 @@ import com.miband.app.core.createFilePicker
 import com.miband.app.core.currentTimeMillis
 import com.miband.app.core.formatTimestamp
 import com.miband.app.core.initBandBurgContext
+import com.miband.app.core.launchSettingsActivity
 import com.miband.app.core.loadSavedDevices
+import com.miband.app.core.loadShowLogs
 import com.miband.app.core.pickFileFromPicker
 import com.miband.app.core.saveSavedDevices
 import com.miband.app.models.ConnectionStatus
@@ -82,7 +86,7 @@ import top.yukonga.miuix.kmp.theme.ThemeController
 private fun SimpleDivider() {
     Box(
         modifier = Modifier.fillMaxWidth().height(1.dp)
-            .padding(horizontal = 16.dp),
+            .background(Color.LightGray.copy(alpha = 0.3f)),
     )
 }
 
@@ -102,8 +106,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
     val controller = remember { ThemeController(ColorSchemeMode.System) }
 
     var activeTab by remember { mutableIntStateOf(0) }
-    var showSettings by remember { mutableStateOf(false) }
-    var showLogs by remember { mutableStateOf(true) }
+    var showLogs by remember { mutableStateOf(loadShowLogs(context)) }
     var connectionStatus by remember { mutableStateOf(ConnectionStatus.DISCONNECTED) }
     var deviceSession by remember { mutableStateOf<com.miband.app.models.DeviceSession?>(null) }
     var deviceInfo by remember { mutableStateOf(DeviceInfo()) }
@@ -162,7 +165,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 addLog("正在断开...", LogType.INFO)
                 withContext(IO) { manager.disconnect(session) }
                 deviceSession = null
-                connectionStatus = ConnectionStatus.CONNECTED
+                connectionStatus = ConnectionStatus.DISCONNECTED
                 deviceInfo = DeviceInfo()
                 addLog("已断开", LogType.SUCCESS)
             }
@@ -180,180 +183,176 @@ private fun AppContent(modifier: Modifier = Modifier) {
     }
 
     MiuixTheme(controller = controller) {
-        if (showSettings) {
-            SettingsScreen(onBack = { showSettings = false }, showLogs = showLogs, onShowLogsChange = { showLogs = it })
-        } else {
-            Scaffold(
-                modifier = modifier.fillMaxSize(),
-                topBar = {
-                    SmallTopAppBar(
-                        title = "BANDBURG",
-                        actions = {
-                            IconButton(onClick = { showSettings = true }) {
-                                Icon(
-                                    imageVector = MiuixIcons.Settings,
-                                    contentDescription = "设置",
-                                )
-                            }
-                        },
-                    )
-                },
-            ) { innerPadding ->
-                Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        item { Spacer(modifier = Modifier.height(4.dp)) }
-                        item {
-                            DeviceStatusBar(
-                                connectionStatus,
-                                deviceInfo,
-                                deviceSession,
-                                onDisconnect = ::disconnectFromDevice,
-                                onConnect = {
-                                    deviceSession?.let { connectToDevice(it.device) }
-                                        ?: run { showAddDeviceDialog = true }
-                                },
+        Scaffold(
+            modifier = modifier.fillMaxSize(),
+            topBar = {
+                SmallTopAppBar(
+                    title = "BANDBURG",
+                    actions = {
+                        IconButton(onClick = { launchSettingsActivity(context) }) {
+                            Icon(
+                                imageVector = MiuixIcons.Settings,
+                                contentDescription = "设置",
                             )
                         }
-                        item {
-                            SavedDevicesSection(
-                                savedDevices,
-                                deviceSession,
-                                onConnect = ::connectToDevice,
-                                onDelete = { device ->
-                                    if (deviceSession?.device?.id == device.id) disconnectFromDevice()
-                                    savedDevices = savedDevices.filter { it.id != device.id }
-                                    saveSavedDevices(context, savedDevices)
-                                    addLog("${device.name} 已删除", LogType.SUCCESS)
-                                },
-                            )
-                        }
-                        item {
-                            Button(
-                                onClick = { showAddDeviceDialog = true },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(),
-                            ) {
-                                Text("+ 添加新设备")
-                            }
-                        }
-                        item {
-                            TabRow(
-                                tabs = listOf("表盘", "应用", "安装"),
-                                selectedTabIndex = activeTab,
-                                onTabSelected = { activeTab = it },
-                            )
-                        }
-                        item {
-                            when (activeTab) {
-                                0 -> WatchfaceSection(watchfaces, deviceSession, manager, addLog) { watchfaces = it }
-                                1 -> AppSection(apps, deviceSession, manager, addLog) { apps = it }
-                                2 -> InstallSection(deviceSession, manager) { msg, type -> addLog(msg, type) }
-                            }
-                        }
-                        if (showLogs) {
-                            item { LogSection(logs) }
-                        }
-                        item { Footer() }
+                    },
+                )
+            },
+        ) { innerPadding ->
+            Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    item { Spacer(modifier = Modifier.height(4.dp)) }
+                    item {
+                        DeviceStatusBar(
+                            connectionStatus,
+                            deviceInfo,
+                            deviceSession,
+                            onDisconnect = ::disconnectFromDevice,
+                            onConnect = {
+                                deviceSession?.let { connectToDevice(it.device) }
+                                    ?: run { showAddDeviceDialog = true }
+                            },
+                        )
                     }
+                    item {
+                        SavedDevicesSection(
+                            savedDevices,
+                            deviceSession,
+                            onConnect = ::connectToDevice,
+                            onDelete = { device ->
+                                if (deviceSession?.device?.id == device.id) disconnectFromDevice()
+                                savedDevices = savedDevices.filter { it.id != device.id }
+                                saveSavedDevices(context, savedDevices)
+                                addLog("${device.name} 已删除", LogType.SUCCESS)
+                            },
+                        )
+                    }
+                    item {
+                        Button(
+                            onClick = { showAddDeviceDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(),
+                        ) {
+                            Text("+ 添加新设备")
+                        }
+                    }
+                    item {
+                        TabRow(
+                            tabs = listOf("表盘", "应用", "安装"),
+                            selectedTabIndex = activeTab,
+                            onTabSelected = { activeTab = it },
+                        )
+                    }
+                    item {
+                        when (activeTab) {
+                            0 -> WatchfaceSection(watchfaces, deviceSession, manager, addLog) { watchfaces = it }
+                            1 -> AppSection(apps, deviceSession, manager, addLog) { apps = it }
+                            2 -> InstallSection(deviceSession, manager) { msg, type -> addLog(msg, type) }
+                        }
+                    }
+                    if (showLogs) {
+                        item { LogSection(logs) }
+                    }
+                    item { Footer() }
                 }
-                if (showAddDeviceDialog) {
-                    AddDeviceBottomSheet(
-                        deviceFormTab, {
-                            if (deviceFormTab == 1 && it != 1 && isScanning) {
-                                scanner.stopScan()
-                                isScanning = false
-                            }
-                            deviceFormTab = it
-                        },
-                        deviceName, { deviceName = it },
-                        deviceAddr, { deviceAddr = it },
-                        deviceAuthkey, { deviceAuthkey = it },
-                        deviceSarVersion, { deviceSarVersion = it },
-                        deviceConnectTypeBle, { deviceConnectTypeBle = it },
-                        scannedDevices, isScanning,
-                        onStartScan = {
-                            scannedDevices = emptyList()
-                            isScanning = true
-                            addLog("开始扫描附近蓝牙设备...", LogType.INFO)
-                            var lastCount = 0
-                            var stableRounds = 0
-                            scope.launch {
-                                while (isScanning) {
-                                    kotlinx.coroutines.delay(1000)
-                                    val current = scannedDevices.size
-                                    if (current == lastCount) {
-                                        stableRounds++
-                                        if (stableRounds >= 3) {
-                                            scanner.stopScan()
-                                            isScanning = false
-                                            addLog("扫描完成，发现 ${scannedDevices.size} 个设备", LogType.SUCCESS)
-                                            break
-                                        }
-                                    } else {
-                                        stableRounds = 0
-                                        lastCount = current
-                                    }
-                                }
-                            }
-                            scanner.startScan(
-                                onDeviceFound = { dev -> if (scannedDevices.none { it.address == dev.address }) scannedDevices = scannedDevices + dev },
-                                onScanComplete = {
-                                    if (isScanning) {
-                                        isScanning = false
-                                        addLog("扫描完成，发现 ${scannedDevices.size} 个设备", LogType.SUCCESS)
-                                    }
-                                },
-                            )
-                        },
-                        onStopScan = {
+            }
+            if (showAddDeviceDialog) {
+                AddDeviceBottomSheet(
+                    deviceFormTab, {
+                        if (deviceFormTab == 1 && it != 1 && isScanning) {
                             scanner.stopScan()
                             isScanning = false
-                        },
-                        onDeviceSelected = { dev ->
-                            deviceName = dev.name
-                            deviceAddr = dev.address
-                            deviceFormTab = 0
-                        },
-                        onSave = {
-                            if (deviceName.isBlank()) {
-                                addLog("请填写设备名称", LogType.ERROR)
-                                return@AddDeviceBottomSheet
+                        }
+                        deviceFormTab = it
+                    },
+                    deviceName, { deviceName = it },
+                    deviceAddr, { deviceAddr = it },
+                    deviceAuthkey, { deviceAuthkey = it },
+                    deviceSarVersion, { deviceSarVersion = it },
+                    deviceConnectTypeBle, { deviceConnectTypeBle = it },
+                    scannedDevices, isScanning,
+                    onStartScan = {
+                        scannedDevices = emptyList()
+                        isScanning = true
+                        addLog("开始扫描附近蓝牙设备...", LogType.INFO)
+                        var lastCount = 0
+                        var stableRounds = 0
+                        scope.launch {
+                            while (isScanning) {
+                                kotlinx.coroutines.delay(1000)
+                                val current = scannedDevices.size
+                                if (current == lastCount) {
+                                    stableRounds++
+                                    if (stableRounds >= 3) {
+                                        scanner.stopScan()
+                                        isScanning = false
+                                        addLog("扫描完成，发现 ${scannedDevices.size} 个设备", LogType.SUCCESS)
+                                        break
+                                    }
+                                } else {
+                                    stableRounds = 0
+                                    lastCount = current
+                                }
                             }
-                            if (deviceAuthkey.isBlank()) {
-                                addLog("请填写认证密钥", LogType.ERROR)
-                                return@AddDeviceBottomSheet
-                            }
-                            val dev = SavedDevice(
-                                id = currentTimeMillis().toString(),
-                                name = deviceName,
-                                addr = deviceAddr.ifBlank { "00:00:00:00:00:00" },
-                                authkey = deviceAuthkey,
-                                sarVersion = if (deviceSarVersion == 1) 2 else 1,
-                                connectType = if (deviceConnectTypeBle) "BLE" else "SPP",
-                            )
-                            savedDevices = savedDevices + dev
-                            saveSavedDevices(context, savedDevices)
-                            addLog("设备 ${dev.name} 添加成功", LogType.SUCCESS)
-                            deviceName = ""
-                            deviceAddr = ""
-                            deviceAuthkey = ""
-                            deviceSarVersion = 1
-                            deviceConnectTypeBle = false
-                            deviceFormTab = 0
-                            showAddDeviceDialog = false
-                        },
-                        onDismiss = {
-                            if (isScanning) {
-                                scanner.stopScan()
-                                isScanning = false
-                            }
-                            showAddDeviceDialog = false
-                        },
-                    )
-                }
+                        }
+                        scanner.startScan(
+                            onDeviceFound = { dev -> if (scannedDevices.none { it.address == dev.address }) scannedDevices = scannedDevices + dev },
+                            onScanComplete = {
+                                if (isScanning) {
+                                    isScanning = false
+                                    addLog("扫描完成，发现 ${scannedDevices.size} 个设备", LogType.SUCCESS)
+                                }
+                            },
+                        )
+                    },
+                    onStopScan = {
+                        scanner.stopScan()
+                        isScanning = false
+                    },
+                    onDeviceSelected = { dev ->
+                        deviceName = dev.name
+                        deviceAddr = dev.address
+                        deviceFormTab = 0
+                    },
+                    onSave = {
+                        if (deviceName.isBlank()) {
+                            addLog("请填写设备名称", LogType.ERROR)
+                            return@AddDeviceBottomSheet
+                        }
+                        if (deviceAuthkey.isBlank()) {
+                            addLog("请填写认证密钥", LogType.ERROR)
+                            return@AddDeviceBottomSheet
+                        }
+                        val dev = SavedDevice(
+                            id = currentTimeMillis().toString(),
+                            name = deviceName,
+                            addr = deviceAddr.ifBlank { "00:00:00:00:00:00" },
+                            authkey = deviceAuthkey,
+                            sarVersion = if (deviceSarVersion == 1) 2 else 1,
+                            connectType = if (deviceConnectTypeBle) "BLE" else "SPP",
+                        )
+                        savedDevices = savedDevices + dev
+                        saveSavedDevices(context, savedDevices)
+                        addLog("设备 ${dev.name} 添加成功", LogType.SUCCESS)
+                        deviceName = ""
+                        deviceAddr = ""
+                        deviceAuthkey = ""
+                        deviceSarVersion = 1
+                        deviceConnectTypeBle = false
+                        deviceFormTab = 0
+                        showAddDeviceDialog = false
+                    },
+                    onDismiss = {
+                        if (isScanning) {
+                            scanner.stopScan()
+                            isScanning = false
+                        }
+                        showAddDeviceDialog = false
+                    },
+                )
             }
         }
     }
@@ -361,7 +360,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
 
 // ─── SettingsScreen ───
 @Composable
-private fun SettingsScreen(onBack: () -> Unit, showLogs: Boolean, onShowLogsChange: (Boolean) -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, showLogs: Boolean = true, onShowLogsChange: (Boolean) -> Unit = {}) {
     Scaffold(
         topBar = {
             SmallTopAppBar(

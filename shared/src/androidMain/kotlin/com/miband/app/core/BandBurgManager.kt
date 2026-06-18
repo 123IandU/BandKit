@@ -188,7 +188,19 @@ actual class BandBurgManager {
                     if (authDeferred != null) {
                         val payload = packet["authDeviceVerify"] ?: packet["device_verify"]
                         if (payload != null) {
-                            Log.d(TAG, "Received DeviceVerify, completing auth")
+                            Log.d(TAG, "Received DeviceVerify, sending AppConfirm")
+                            try {
+                                val deviceVerifyJson = payload.toString()
+                                val appConfirmBytes = NativeLib.nativeHandleAuthStep2(handle, deviceVerifyJson, true)
+                                val conn = connections[handle]
+                                if (conn != null && appConfirmBytes.isNotEmpty()) {
+                                    conn.outputStream.write(appConfirmBytes)
+                                    conn.outputStream.flush()
+                                    Log.d(TAG, "AppConfirm sent (${appConfirmBytes.size} bytes)")
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to send AppConfirm", e)
+                            }
                             authDeferred.complete(true)
                         }
                     }
@@ -346,27 +358,73 @@ actual class BandBurgManager {
             Log.d(TAG, "Installing file: $fileName (type=$resType, size=${fileData.size})")
             onProgress(0f)
 
-            val preparePb = ProtobufBuilder.buildPrepareInstall(resType, fileData.size, packageName)
+            val preparePb = when (resType) {
+                16 -> {
+                    val watchfaceId = packageName ?: fileName.substringBeforeLast(".")
+                    ProtobufBuilder.buildWatchfaceInstallRequest(watchfaceId, fileData.size)
+                }
+
+                64 -> {
+                    ProtobufBuilder.buildThirdPartyAppInstallRequest(
+                        packageName ?: "unknown.app",
+                        fileData.size,
+                    )
+                }
+
+                32 -> {
+                    val md5 = java.security.MessageDigest.getInstance("MD5").digest(fileData)
+                    ProtobufBuilder.buildFirmwareInstallRequest(md5, fileData.size)
+                }
+
+                else -> ProtobufBuilder.buildPrepareInstall(resType, fileData.size, packageName)
+            }
             val prepareEncoded = NativeLib.nativeSendProtobuf(session.handle, preparePb)
             conn.outputStream.write(prepareEncoded)
             conn.outputStream.flush()
 
-            val prepareKey = "2:20"
+            val prepareKey = when (resType) {
+                16 -> "4:7"
+                64 -> "20:3"
+                32 -> "2:4"
+                else -> "19:1"
+            }
             val deferred = CompletableDeferred<String>()
             pendingResponses[prepareKey] = deferred
             try {
-                withTimeout(5000L) { deferred.await() }
+                withTimeout(10000L) { deferred.await() }
+                Log.d(TAG, "Prepare response received for type=$resType")
             } catch (e: Exception) {
                 pendingResponses.remove(prepareKey)
-                Log.w(TAG, "Prepare response timeout, continuing anyway")
+                Log.w(TAG, "Prepare response timeout for type=$resType, continuing anyway")
             }
 
+            val md5 = java.security.MessageDigest.getInstance("MD5").digest(fileData)
+            val massHeader = ByteArray(22)
+            massHeader[0] = 0x00
+            massHeader[1] = resType.toByte()
+            System.arraycopy(md5, 0, massHeader, 2, 16)
+            massHeader[18] = (fileData.size and 0xFF).toByte()
+            massHeader[19] = ((fileData.size shr 8) and 0xFF).toByte()
+            massHeader[20] = ((fileData.size shr 16) and 0xFF).toByte()
+            massHeader[21] = ((fileData.size shr 24) and 0xFF).toByte()
+            val massPayload = massHeader + fileData
+
+            val crc32 = java.util.zip.CRC32()
+            crc32.update(massPayload)
+            val crcVal = crc32.value
+            val crcBytes = ByteArray(4)
+            crcBytes[0] = (crcVal and 0xFF).toByte()
+            crcBytes[1] = ((crcVal shr 8) and 0xFF).toByte()
+            crcBytes[2] = ((crcVal shr 16) and 0xFF).toByte()
+            crcBytes[3] = ((crcVal shr 24) and 0xFF).toByte()
+            val fullPayload = massPayload + crcBytes
+
             val chunkSize = 666
-            val totalChunks = (fileData.size + chunkSize - 1) / chunkSize
+            val totalChunks = (fullPayload.size + chunkSize - 1) / chunkSize
             for (i in 0 until totalChunks) {
                 val offset = i * chunkSize
-                val end = minOf(offset + chunkSize, fileData.size)
-                val chunk = fileData.copyOfRange(offset, end)
+                val end = minOf(offset + chunkSize, fullPayload.size)
+                val chunk = fullPayload.copyOfRange(offset, end)
 
                 val dataPb = ProtobufBuilder.buildInstallData(chunk, offset)
                 val dataEncoded = NativeLib.nativeSendProtobuf(session.handle, dataPb)
@@ -379,11 +437,6 @@ actual class BandBurgManager {
                     kotlinx.coroutines.delay(10)
                 }
             }
-
-            val finishPb = ProtobufBuilder.buildFinishInstall()
-            val finishEncoded = NativeLib.nativeSendProtobuf(session.handle, finishPb)
-            conn.outputStream.write(finishEncoded)
-            conn.outputStream.flush()
 
             onProgress(1f)
             Log.d(TAG, "File install completed: $fileName")

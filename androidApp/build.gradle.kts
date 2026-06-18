@@ -28,6 +28,9 @@ tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach 
 dependencies {
     implementation(project(":shared"))
     implementation(libs.androidx.activity)
+    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.2")
+    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.2")
+    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.2")
     debugImplementation(compose.uiTooling)
 }
 

@@ -18,3 +18,9 @@ actual fun currentTimeMillis(): Long = System.currentTimeMillis()
 actual fun loadSavedDevices(context: Any): List<SavedDevice> = emptyList()
 
 actual fun saveSavedDevices(context: Any, devices: List<SavedDevice>) {}
+
+actual fun launchSettingsActivity(context: Any) {}
+
+actual fun loadShowLogs(context: Any): Boolean = true
+
+actual fun saveShowLogs(context: Any, value: Boolean) {}

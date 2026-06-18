@@ -162,12 +162,12 @@ object ResponseParser {
         var totalBytes: Long? = null
         var usedBytes: Long? = null
 
-        for (key in listOf("total", "storage_total", "total_storage")) {
+        for (key in listOf("total", "storage_total", "total_storage", "totalStorage", "capacity", "total_capacity")) {
             val v = data[key] ?: continue
             totalBytes = v.jsonPrimitive.contentOrNull?.toLongOrNull()
             if (totalBytes != null) break
         }
-        for (key in listOf("used", "storage_used", "used_storage")) {
+        for (key in listOf("used", "storage_used", "used_storage", "usedStorage")) {
             val v = data[key] ?: continue
             usedBytes = v.jsonPrimitive.contentOrNull?.toLongOrNull()
             if (usedBytes != null) break
@@ -176,7 +176,45 @@ object ResponseParser {
         if (totalBytes != null && usedBytes != null) {
             return Triple(formatStorage(totalBytes), formatStorage(usedBytes), formatStorage(totalBytes - usedBytes))
         }
-        return Triple("-", "-", "-")
+
+        var totalStr: String? = null
+        var usedStr: String? = null
+        for (key in listOf("total_storage", "totalStorage", "storage_total", "storageTotal", "total_capacity", "storage_total_storage", "storage_capacity")) {
+            val v = data[key] ?: continue
+            totalStr = v.jsonPrimitive.contentOrNull
+            if (totalStr != null) break
+        }
+        for (key in listOf("used_storage", "usedStorage", "storage_used", "storageUsed", "used_capacity", "storage_used_storage")) {
+            val v = data[key] ?: continue
+            usedStr = v.jsonPrimitive.contentOrNull
+            if (usedStr != null) break
+        }
+
+        if (totalStr != null && usedStr != null) {
+            return Triple(formatStorageFromAny(totalStr), formatStorageFromAny(usedStr), "-")
+        }
+
+        for ((key, v) in data) {
+            val lk = key.lowercase()
+            if (totalStr == null && (lk.contains("total") || lk.contains("capacity"))) {
+                val s = v.jsonPrimitive.contentOrNull
+                if (s != null) {
+                    totalStr = formatStorageFromAny(s)
+                    break
+                }
+            }
+        }
+
+        return Triple(totalStr ?: "-", usedStr ?: "-", "-")
+    }
+
+    private fun formatStorageFromAny(storage: String): String {
+        val num = storage.toLongOrNull()
+        if (num != null && num > 0) return formatStorage(num)
+        if (storage.contains("GB") || storage.contains("MB") || storage.contains("KB") || storage.contains("B")) {
+            return storage
+        }
+        return storage
     }
 
     private fun formatStorage(bytes: Long): String {

@@ -29,3 +29,22 @@ actual fun saveSavedDevices(context: Any, devices: List<SavedDevice>) {
     val prefs = ctx.getSharedPreferences("bandburg", Context.MODE_PRIVATE)
     prefs.edit().putString("devices", kotlinx.serialization.json.Json.encodeToString(devices)).apply()
 }
+
+actual fun launchSettingsActivity(context: Any) {
+    val ctx = context as Context
+    val intent = android.content.Intent()
+    intent.setClassName(ctx.packageName, "com.miband.app.SettingsActivity")
+    ctx.startActivity(intent)
+}
+
+actual fun loadShowLogs(context: Any): Boolean {
+    val ctx = context as Context
+    val prefs = ctx.getSharedPreferences("bandburg", Context.MODE_PRIVATE)
+    return prefs.getBoolean("show_logs", true)
+}
+
+actual fun saveShowLogs(context: Any, value: Boolean) {
+    val ctx = context as Context
+    val prefs = ctx.getSharedPreferences("bandburg", Context.MODE_PRIVATE)
+    prefs.edit().putBoolean("show_logs", value).apply()
+}
