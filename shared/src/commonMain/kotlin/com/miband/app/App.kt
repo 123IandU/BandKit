@@ -53,6 +53,7 @@ import com.miband.app.models.SavedDevice
 import com.miband.app.models.Watchface
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -256,7 +257,13 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 }
                 if (showAddDeviceDialog) {
                     AddDeviceBottomSheet(
-                        deviceFormTab, { deviceFormTab = it },
+                        deviceFormTab, {
+                            if (deviceFormTab == 1 && it != 1 && isScanning) {
+                                scanner.stopScan()
+                                isScanning = false
+                            }
+                            deviceFormTab = it
+                        },
                         deviceName, { deviceName = it },
                         deviceAddr, { deviceAddr = it },
                         deviceAuthkey, { deviceAuthkey = it },
@@ -267,11 +274,33 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             scannedDevices = emptyList()
                             isScanning = true
                             addLog("开始扫描附近蓝牙设备...", LogType.INFO)
+                            var lastCount = 0
+                            var stableRounds = 0
+                            scope.launch {
+                                while (isScanning) {
+                                    kotlinx.coroutines.delay(1000)
+                                    val current = scannedDevices.size
+                                    if (current == lastCount) {
+                                        stableRounds++
+                                        if (stableRounds >= 3) {
+                                            scanner.stopScan()
+                                            isScanning = false
+                                            addLog("扫描完成，发现 ${scannedDevices.size} 个设备", LogType.SUCCESS)
+                                            break
+                                        }
+                                    } else {
+                                        stableRounds = 0
+                                        lastCount = current
+                                    }
+                                }
+                            }
                             scanner.startScan(
                                 onDeviceFound = { dev -> if (scannedDevices.none { it.address == dev.address }) scannedDevices = scannedDevices + dev },
                                 onScanComplete = {
-                                    isScanning = false
-                                    addLog("扫描完成 (如无设备请检查蓝牙权限)", LogType.INFO)
+                                    if (isScanning) {
+                                        isScanning = false
+                                        addLog("扫描完成，发现 ${scannedDevices.size} 个设备", LogType.SUCCESS)
+                                    }
                                 },
                             )
                         },
@@ -306,7 +335,13 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             addLog("设备 ${dev.name} 保存成功", LogType.SUCCESS)
                             showAddDeviceDialog = false
                         },
-                        onDismiss = { showAddDeviceDialog = false },
+                        onDismiss = {
+                            if (isScanning) {
+                                scanner.stopScan()
+                                isScanning = false
+                            }
+                            showAddDeviceDialog = false
+                        },
                     )
                 }
             }
@@ -564,19 +599,14 @@ private fun AddDeviceBottomSheet(
                             modifier = Modifier.fillMaxWidth().weight(1f),
                         ) {
                             items(scannedDevices) { dev ->
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                                        .clickable { onDeviceSelected(dev) }
-                                        .padding(horizontal = 8.dp, vertical = 12.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(dev.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                        Text(dev.address, fontSize = 12.sp)
-                                    }
-                                    Text("RSSI: ${dev.rssi}", fontSize = 12.sp)
-                                }
+                                BasicComponent(
+                                    title = dev.name,
+                                    summary = dev.address,
+                                    endActions = {
+                                        Text("RSSI: ${dev.rssi}", fontSize = 12.sp)
+                                    },
+                                    onClick = { onDeviceSelected(dev) },
+                                )
                             }
                         }
                         if (isScanning) {
