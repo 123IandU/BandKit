@@ -12,8 +12,10 @@ import com.miband.app.models.SavedDevice
 import com.miband.app.models.Watchface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.zip.ZipInputStream
 
 actual class BandBurgManager {
 
@@ -163,8 +165,20 @@ actual class BandBurgManager {
         onProgress: (Float) -> Unit,
     ): Boolean {
         val addr = session.device.addr
+
+        // 如果是第三方应用（type=64）且没传包名，从 RPK 中提取
+        val resolvedPackageName = if (packageName == null && resType == 64) {
+            extractRpkgPackageName(fileData)
+        } else {
+            packageName
+        }
+
         return try {
-            Log.d(TAG, "Installing file: $fileName (type=$resType, size=${fileData.size})")
+            Log.d(
+                TAG,
+                "Installing file: $fileName (type=$resType, size=${fileData.size})" +
+                    if (resolvedPackageName != null) ", pkg=$resolvedPackageName" else "",
+            )
             onProgress(0f)
 
             val result = withContext(Dispatchers.IO) {
@@ -172,7 +186,7 @@ actual class BandBurgManager {
                     addr = addr,
                     resType = byteArrayOf(resType.toByte()),
                     data = fileData,
-                    packageName = packageName,
+                    packageName = resolvedPackageName,
                     progressCb = null,
                     watchfaceId = null,
                 )
@@ -199,6 +213,34 @@ actual class BandBurgManager {
         commandId: Int,
         payload: ByteArray?,
     ): String = ""
+
+    /**
+     * 从 RPK/ZIP 文件中提取第三方应用包名
+     */
+    private fun extractRpkgPackageName(fileData: ByteArray): String? {
+        return try {
+            val zis = ZipInputStream(ByteArrayInputStream(fileData))
+            var entry = zis.nextEntry
+            while (entry != null) {
+                val parts = entry.name.split("/")
+                for (part in parts) {
+                    if (part.count { it == '.' } >= 2) {
+                        val trimmed = part.trim()
+                        if (trimmed.matches(Regex("^[a-zA-Z][a-zA-Z0-9]*(\\.[a-zA-Z][a-zA-Z0-9]*)+$"))) {
+                            zis.close()
+                            return trimmed
+                        }
+                    }
+                }
+                entry = zis.nextEntry
+            }
+            zis.close()
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "extractRpkgPackageName failed: ${e.message}")
+            null
+        }
+    }
 
     companion object {
         private const val TAG = "BandBurgManager"
