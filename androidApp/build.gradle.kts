@@ -48,21 +48,18 @@ android {
 
 // ======== Rust JNI 库自动编译 ========
 val rustProjectDir = rootProject.projectDir.resolve("rust/app_android")
-val cargoToml = rustProjectDir.resolve("Cargo.toml")
 
-// 如果 submodule 未初始化，自动 git submodule update --init
-if (!cargoToml.exists()) {
-    val proc = ProcessBuilder("git", "submodule", "update", "--init", "--recursive")
-        .directory(rootProject.projectDir)
-        .inheritIO()
-        .start()
-    val exitCode = proc.waitFor()
-    if (exitCode != 0) {
-        throw GradleException("Failed to init submodule rust/app_android")
-    }
+// 任务阶段初始化 git submodule，不阻塞配置缓存
+tasks.register<Exec>("initRustSubmodule") {
+    description = "Initialize git submodule for app_android if not cloned"
+    workingDir = rootProject.projectDir
+    commandLine("git", "submodule", "update", "--init", "--recursive")
+    // 如果 submodule 已存在，git 什么都不做，不报错
+    isIgnoreExitValue = true
 }
 
 tasks.register<Exec>("buildRustLib") {
+    dependsOn("initRustSubmodule")
     description = "Compile Rust JNI .so library via cargo"
     workingDir = rustProjectDir
     commandLine("cargo", "build", "--target", "aarch64-linux-android", "--release")
