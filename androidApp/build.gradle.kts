@@ -48,6 +48,8 @@ android {
 
 // ======== Rust JNI 库自动编译 ========
 val rustProjectDir = rootProject.projectDir.resolve("rust/app_android")
+val isRelease = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+val buildMode = if (isRelease) "release" else "debug"
 
 // 自动拉取 app_android submodule 到最新版本
 tasks.register<Exec>("initRustSubmodule") {
@@ -63,13 +65,15 @@ tasks.register<Exec>("buildRustLib") {
     dependsOn("initRustSubmodule")
     description = "Compile Rust JNI .so library via cargo"
     workingDir = rustProjectDir
-    commandLine("cargo", "build", "--target", "aarch64-linux-android", "--release")
+    val cargoArgs = mutableListOf("build", "--target", "aarch64-linux-android")
+    if (isRelease) cargoArgs.add("--release")
+    commandLine("cargo", *cargoArgs.toTypedArray())
 }
 
 tasks.register<Copy>("copyRustLib") {
     dependsOn("buildRustLib")
     description = "Copy compiled .so to build/rust-jni"
-    from(rustProjectDir.resolve("target/aarch64-linux-android/release/libastrobox_app_android.so"))
+    from(rustProjectDir.resolve("target/aarch64-linux-android/$buildMode/libastrobox_app_android.so"))
     into(layout.buildDirectory.dir("rust-jni").map { it.dir("arm64-v8a") })
 }
 
