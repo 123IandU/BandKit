@@ -1,4 +1,4 @@
-// Copyright 2026, compose-miuix-ui contributors
+﻿// Copyright 2026, compose-miuix-ui contributors
 // SPDX-License-Identifier: Apache-2.0
 plugins {
     alias(libs.plugins.androidApplication)
@@ -44,4 +44,44 @@ android {
     buildFeatures {
         compose = true
     }
+}
+
+// ======== Rust JNI 库自动编译 ========
+val rustProjectDir = rootProject.projectDir.resolve("rust/app_android")
+val cargoToml = rustProjectDir.resolve("Cargo.toml")
+
+// 如果 submodule 未初始化，自动 git submodule update --init
+if (!cargoToml.exists()) {
+    val proc = ProcessBuilder("git", "submodule", "update", "--init", "--recursive")
+        .directory(rootProject.projectDir)
+        .inheritIO()
+        .start()
+    val exitCode = proc.waitFor()
+    if (exitCode != 0) {
+        throw GradleException("Failed to init submodule rust/app_android")
+    }
+}
+
+tasks.register<Exec>("buildRustLib") {
+    description = "Compile Rust JNI .so library via cargo"
+    workingDir = rustProjectDir
+    commandLine("cargo", "build", "--target", "aarch64-linux-android", "--release")
+}
+
+tasks.register<Copy>("copyRustLib") {
+    dependsOn("buildRustLib")
+    description = "Copy compiled .so to build/rust-jni"
+    from(rustProjectDir.resolve("target/aarch64-linux-android/release/libastrobox_app_android.so"))
+    into(layout.buildDirectory.dir("rust-jni").map { it.dir("arm64-v8a") })
+}
+
+// 注册 build/rust-jni 为 jniLibs 源目录
+afterEvaluate {
+    android.sourceSets.getByName("release").jniLibs.srcDirs(layout.buildDirectory.dir("rust-jni").get().asFile)
+    android.sourceSets.getByName("debug").jniLibs.srcDirs(layout.buildDirectory.dir("rust-jni").get().asFile)
+}
+
+// 确保 copyRustLib 在 mergeJniLibFolders 之前运行
+tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") }.configureEach {
+    dependsOn("copyRustLib")
 }
