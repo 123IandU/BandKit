@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -182,12 +183,17 @@ private fun AppContent(modifier: Modifier = Modifier) {
     }
 
     DisposableEffect(Unit) {
-        manager.init()
-        initBandBurgContext(manager, context)
         scanner.init(context)
         onDispose {
             scanner.stopScan()
             deviceSession?.let { manager.destroySession(it) }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        withContext(IO) {
+            manager.init()
+            initBandBurgContext(manager, context)
         }
     }
 

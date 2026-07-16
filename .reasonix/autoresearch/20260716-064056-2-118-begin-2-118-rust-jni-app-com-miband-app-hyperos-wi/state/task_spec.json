@@ -1,0 +1,25 @@
+{
+  "task_id": "20260716-064056-2-118-begin-2-118-rust-jni-app-com-miband-app-hyperos-wi",
+  "goal": "[已粘贴文本 #2 · 118 行]\n\n--- Begin [已粘贴文本 #2 · 118 行] ---\n# 日志分层梳理（Rust JNI 安卓 App com.miband.app，HyperOS 小米设备）\r\n\r\n## 一、核心成功节点（证明你 Windows 交叉编译问题已彻底修复）\r\n\r\n```\r\n2026-07-16 14:33:52.700  nativeloader: Load libastrobox_app_android.so ... ok\r\n2026-07-16 14:33:52.702  AstroBox: astrobox_app_android::frontapi::device: AstroBox JNI library initialized\r\ncorelib ECS Runtime initialization completed\r\nNativeDevice event sink 注册完成\r\n```\r\n\r\n✅ 结论：\r\n\r\n1. `libastrobox_app_android.so` 正常打包进 APK，系统能找到并加载；\r\n2. Rust JNI 入口函数执行无崩溃，ECS 底层业务框架初始化成功；\r\n3. 原生层事件回调通道打通，基础运行环境完全可用。\r\n\r\n## 二、完全无害、可直接忽略的日志（系统/厂商框架杂讯，不影响功能）\r\n\r\n### 1. dm 文件缺失警告\r\n\r\n`Unable to open ...base.dm / QXPerformance.dm`\r\ndm 是 MIUI 性能预编译缓存文件，不存在属于常态，无任何业务影响。\r\n\r\n### 2. libc 属性访问拒绝\r\n\r\n`Access denied finding property \"vendor.xxx\"`\r\n厂商私有调试/显示属性，第三方 App 无读取权限，仅打印日志，不会阻塞逻辑。\r\n\r\n### 3. SELinux avc denied 大量拦截日志\r\n\r\n读取 display、sysfs、zygote socket 权限被拦截\r\n安卓沙盒安全限制，所有第三方普通 App 都会打印，**不会造成闪退、蓝牙、网络失效**，仅日志冗余。\r\n\r\n### 4. 系统服务侧报错（systemui/system\\_server/miui 相关）\r\n\r\n- `updatePkgSupportFreeform`、`Try to add a invalid package`\r\n- `can't be added to recent list`、`appIsTopAndXSpace: false`\r\n- `failed to get ContentCatcherService`\r\n全是小米桌面、分屏、镜像、内容捕获框架内部逻辑报错，**和你的业务代码无关**，无需处理。\r\n\r\n### 5. 反射隐藏 API、返回键新 API 告警\r\n\r\n- `Accessing hidden method ... allowed`：系统允许反射，无崩溃风险；\r\n- `OnBackInvokedCallback is not enabled`：仅新返回手势API未配置，物理返回键正常工作，可选在清单加配置消除警告。\r\n\r\n## 三、中度问题：UI 主线程严重阻塞（优先级高，必须优化）\r\n\r\n关键日志：\r\n\r\n```\r\nChoreographer I Skipped 1146 frames! The application may be doing too much work on its main thread.\r\nSurfaceSyncGroup E Failed to receive transaction ready in 1000ms\r\nSurfaceFlinger E Out of order buffers detected\r\nLB E fail to open file; FrameInsert open fail\r\n```\r\n\r\n### 根因\r\n\r\n你的 Rust 原生逻辑通过 JNI **同步阻塞主线程**：\r\n\r\n1. 蓝牙扫描、网络、设备轮询、文件 IO 直接在 UI 线程调用；\r\n2. 大量图形帧同步等待超时，画面缓冲区乱序，表现为：界面严重卡顿、点击无响应、动画掉帧。\r\n\r\n### 修复方案\r\n\r\n1. Java/Activity 侧：所有 JNI 调用放到 `Coroutine/Dispatchers.IO` / `AsyncTask` 后台线程；\r\n2. Rust 侧：耗时业务逻辑创建独立 Tokio 异步 runtime，不要阻塞 JNI 绑定线程；\r\n3. UI 更新必须切回主线程 Handler 回调，禁止原生层直接操作 View。\r\n\r\n## 四、业务阻断级错误（蓝牙功能完全失效，最高优先级修复）\r\n\r\n重复报错：\r\n\r\n```\r\nBluetoothScanner E Bluetooth permissions not granted\r\n```\r\n\r\n### 权限缺失清单（Android 12+ targetSdk37）\r\n\r\n1. 清单静态声明\r\n\r\n```\r\n\u003c!-- 蓝牙扫描、连接核心权限 --\u003e\r\n\u003cuses-permission android:name=\"android.permission.BLUETOOTH_SCAN\" /\u003e\r\n\u003cuses-permission android:name=\"android.permission.BLUETOOTH_CONNECT\" /\u003e\r\n\u003c!-- 硬件声明 --\u003e\r\n\u003cuses-feature android:name=\"android.hardware.bluetooth_le\" android:required=\"true\"/\u003e\r\n```\r\n\r\n2. 运行时动态申请\r\n进入首页主动弹窗申请 `BLUETOOTH_SCAN + BLUETOOTH_CONNECT`，未授权时禁用蓝牙扫描入口，给出引导提示。\r\n\r\n### 影响\r\n\r\n当前所有蓝牙扫描、手环设备发现逻辑都会直接返回失败，无法搜索外设。\r\n\r\n## 五、次要非致命报错（不影响核心业务，可选修复）\r\n\r\n1. `FramePredict E registerContentObserver fail`\r\nMIUI 帧优化模块注册监听失败，仅画面预渲染优化失效，不阻塞 App 运行；\r\n2. `FrameInsert open fail / LB fail to open file`\r\n原生层帧缓存文件读写失败，大概率主线程阻塞导致文件锁/IO超时，主线程优化后会同步消失。\r\n\r\n## 六、整体运行总结\r\n\r\n1. ✅ Rust 交叉编译产物、JNI、ECS 底层框架运行正常，编译链接问题已解决；\r\n2. ⚠️ 海量 SELinux/厂商系统报错为 HyperOS 固有日志，无需修复；\r\n3. 🔴 两大核心缺陷：\r\n   1. 主线程阻塞上千帧，界面严重卡顿；\r\n   2. 蓝牙权限未申请，蓝牙外设扫描功能不可用；\r\n4. App 生命周期完整：启动→加载原生库→渲染界面→接收点击事件→切后台，无闪退崩溃。\r\n\r\n## 优先修复执行顺序\r\n\r\n1. 实现蓝牙动态权限申请，解决 `Bluetooth permissions not granted`；\r\n2. 隔离 JNI 耗时逻辑至后台线程，消除主线程阻塞与大量掉帧；\r\n3. 可选：清单添加 `android:enableOnBackInvokedCallback=\"true\"` 消除返回键告警。\n--- End [已粘贴文本 #2 · 118 行] ---",
+  "scope": null,
+  "non_goals": null,
+  "allowed_operations": {
+    "write": true,
+    "network": false,
+    "publish": false
+  },
+  "success_criteria": [
+    {
+      "id": "objective_evidence",
+      "description": "The goal outcome is supported by direct evidence, such as inspected code, reproduced behavior, source material, or concrete findings.",
+      "required": true,
+      "evidence_ids": null
+    },
+    {
+      "id": "verification",
+      "description": "The result has relevant verification evidence, such as tests, commands, benchmarks, manual checks, or a documented reason why verification is not applicable.",
+      "required": true,
+      "evidence_ids": null
+    }
+  ]
+}

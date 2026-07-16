@@ -13,12 +13,18 @@ import com.miband.app.models.Watchface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 actual class BandBurgManager {
 
     private val sessions = ConcurrentHashMap<String, DeviceSession>()
+    private val initialized = AtomicBoolean(false)
 
     actual fun init() {
+        if (!initialized.compareAndSet(false, true)) {
+            Log.d(TAG, "NativeDevice already initialized, skipping")
+            return
+        }
         NativeDevice.registerEventSink { event, payload ->
             Log.d(TAG, "NativeDevice event: $event -> $payload")
         }
@@ -196,5 +202,6 @@ actual class BandBurgManager {
 actual fun createBandBurgManager(): BandBurgManager = BandBurgManager()
 
 actual fun initBandBurgContext(manager: BandBurgManager, context: Any) {
-    manager.init(context as android.content.Context)
+    // NativeDevice handles Bluetooth internally; Context no longer needed
+    // init() is called separately via manager.init() to avoid main-thread JNI
 }

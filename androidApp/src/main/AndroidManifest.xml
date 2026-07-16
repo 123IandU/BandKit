@@ -13,6 +13,7 @@
         android:label="Miband"
         android:icon="@mipmap/ic_launcher"
         android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
             android:name=".MainActivity"
