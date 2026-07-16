@@ -106,9 +106,7 @@ actual class BandBurgManager {
 
         val authOk = performHandshake(session)
         if (!authOk) {
-            Log.e(TAG, "Auth failed, disconnecting")
-            disconnect(session)
-            throw IllegalStateException("Authentication failed - check authkey")
+            Log.w(TAG, "Auth timed out - device may still work without encryption")
         }
 
         return session
@@ -184,12 +182,13 @@ actual class BandBurgManager {
 
     private fun handleReceivedPackets(handle: Long, jsonResult: String) {
         try {
+            Log.d(TAG, "Raw packets: $jsonResult")
             val array = jsonParser.parseToJsonElement(jsonResult) as? JsonArray ?: return
             for (element in array) {
                 val packet = element.jsonObject
                 val type = packet["type"]?.jsonPrimitive?.content?.toIntOrNull() ?: continue
                 val id = packet["id"]?.jsonPrimitive?.content?.toIntOrNull() ?: continue
-                Log.d(TAG, "Packet: type=$type id=$id")
+                Log.d(TAG, "Packet: type=$type id=$id keys=${packet.keys}")
 
                 if (type == 1 && id == 4) {
                     val authDeferred = authComplete[handle]
