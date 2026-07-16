@@ -8,7 +8,6 @@ plugins {
     id("module.spotless")
 }
 
-
 dependencies {
     implementation(project(":shared"))
     implementation(libs.androidx.activity)
