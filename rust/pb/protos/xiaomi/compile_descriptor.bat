@@ -1,1 +1,0 @@
-protoc --descriptor_set_out=protocol.bin *.proto
