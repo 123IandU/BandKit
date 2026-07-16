@@ -12,6 +12,10 @@ import com.miband.app.models.SavedDevice
 import com.miband.app.models.Watchface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.ByteArrayInputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -216,25 +220,52 @@ actual class BandBurgManager {
 
     /**
      * 从 RPK/ZIP 文件中提取第三方应用包名
+     * 优先读取 manifest.json 中的 "package" 字段，
+     * 其次扫描 ZIP 条目目录名匹配 com.xxx.xxx 格式
      */
     private fun extractRpkgPackageName(fileData: ByteArray): String? {
         return try {
             val zis = ZipInputStream(ByteArrayInputStream(fileData))
+
+            // 第一遍：找 manifest.json 并解析 "package" 字段
+            val rpkJson = Json { ignoreUnknownKeys = true }
             var entry = zis.nextEntry
+            while (entry != null) {
+                if (entry.name.removePrefix("/").let { it == "manifest.json" || it.endsWith("/manifest.json") }) {
+                    val jsonText = zis.readBytes().decodeToString()
+                    val pkg = try {
+                        val obj = rpkJson.parseToJsonElement(jsonText).jsonObject
+                        obj["package"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                    } catch (_: Exception) { null }
+                    if (pkg != null) {
+                        zis.close()
+                        Log.d(TAG, "extractRpkgPackageName: found from manifest.json: $pkg")
+                        return pkg
+                    }
+                }
+                entry = zis.nextEntry
+            }
+
+            // 第二遍：扫描目录名匹配 com.xxx.xxx
+            zis.close()
+            val zis2 = ZipInputStream(ByteArrayInputStream(fileData))
+            entry = zis2.nextEntry
             while (entry != null) {
                 val parts = entry.name.split("/")
                 for (part in parts) {
                     if (part.count { it == '.' } >= 2) {
                         val trimmed = part.trim()
                         if (trimmed.matches(Regex("^[a-zA-Z][a-zA-Z0-9]*(\\.[a-zA-Z][a-zA-Z0-9]*)+$"))) {
-                            zis.close()
+                            zis2.close()
+                            Log.d(TAG, "extractRpkgPackageName: found from path: $trimmed")
                             return trimmed
                         }
                     }
                 }
-                entry = zis.nextEntry
+                entry = zis2.nextEntry
             }
-            zis.close()
+            zis2.close()
+            Log.w(TAG, "extractRpkgPackageName: no package name found in RPK")
             null
         } catch (e: Exception) {
             Log.w(TAG, "extractRpkgPackageName failed: ${e.message}")

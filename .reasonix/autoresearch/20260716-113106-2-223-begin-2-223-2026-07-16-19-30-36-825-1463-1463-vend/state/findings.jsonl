@@ -1,0 +1,2 @@
+{"id":"f1","kind":"file","summary":"App.kt install UI 新增 packageNameInput TextField，选 .rpk 文件时显示包名输入框","source":"file","paths":["shared/src/commonMain/kotlin/com/miband/app/App.kt"],"accepted":true,"created_at":"2026-07-16T11:33:08.4660597Z"}
+{"id":"f2","kind":"file","summary":"installFile 调用从 packageName=null 改为 packageNameInput.ifBlank { null }，用户输入有限","source":"file","paths":["shared/src/commonMain/kotlin/com/miband/app/App.kt"],"accepted":true,"created_at":"2026-07-16T11:33:08.4688455Z"}
