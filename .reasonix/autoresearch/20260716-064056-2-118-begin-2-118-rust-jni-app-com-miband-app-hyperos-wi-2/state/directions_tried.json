@@ -1,0 +1,23 @@
+[
+  {
+    "fingerprint": "task-c0a6d07d",
+    "summary": "三个修复均已验证。产出最终证据。",
+    "first_seen_iteration": 1,
+    "last_seen_iteration": 1,
+    "count": 1
+  },
+  {
+    "fingerprint": "task-32af1df4",
+    "summary": "所有修复在代码中确认存在，构建通过。",
+    "first_seen_iteration": 2,
+    "last_seen_iteration": 2,
+    "count": 1
+  },
+  {
+    "fingerprint": "task-277bbfa4",
+    "summary": "所有修复确认到位，构建通过。",
+    "first_seen_iteration": 3,
+    "last_seen_iteration": 3,
+    "count": 1
+  }
+]

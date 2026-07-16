@@ -13,7 +13,11 @@
       "id": "objective_evidence",
       "description": "The goal outcome is supported by direct evidence, such as inspected code, reproduced behavior, source material, or concrete findings.",
       "required": true,
-      "evidence_ids": null
+      "evidence_ids": [
+        "f1",
+        "f2",
+        "f3"
+      ]
     },
     {
       "id": "verification",

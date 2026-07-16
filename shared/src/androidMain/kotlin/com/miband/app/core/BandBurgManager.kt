@@ -87,7 +87,13 @@ actual class BandBurgManager {
             val infoJson = withContext(Dispatchers.IO) {
                 NativeDevice.deviceGetData(addr, "info")
             }
-            ResponseParser.parseDeviceInfo(infoJson, "[]", "[]", session.device.name)
+            val statusJson = withContext(Dispatchers.IO) {
+                NativeDevice.deviceGetData(addr, "status")
+            }
+            val storageJson = withContext(Dispatchers.IO) {
+                NativeDevice.deviceGetData(addr, "storage")
+            }
+            ResponseParser.parseDeviceInfo(infoJson, statusJson, storageJson, session.device.name)
         } catch (e: Exception) {
             Log.e(TAG, "getDeviceInfo failed", e)
             DeviceInfo(model = session.device.name, serialNumber = session.device.addr)

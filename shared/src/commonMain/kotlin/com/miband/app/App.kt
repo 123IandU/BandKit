@@ -154,7 +154,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 kotlinx.coroutines.delay(1000)
                 addLog("正在获取设备信息...", LogType.INFO)
                 var info = withContext(IO) { manager.getDeviceInfo(session) }
-                if (info.model == device.name && info.batteryPercent == 0) {
+                if (info.model == device.name && info.firmwareVersion == "-") {
                     addLog("首次查询无数据，重试中...", LogType.INFO)
                     kotlinx.coroutines.delay(2000)
                     info = withContext(IO) { manager.getDeviceInfo(session) }
