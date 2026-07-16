@@ -13,6 +13,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import com.miband.app.core.handleDeviceExportResult
+import com.miband.app.core.handleDeviceImportResult
 import com.miband.app.core.handleFilePickerResult
 
 class MainActivity : ComponentActivity() {
@@ -55,9 +57,11 @@ class MainActivity : ComponentActivity() {
     @Suppress("DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 9999 && resultCode == RESULT_OK) {
-            data?.data?.let { uri ->
-                handleFilePickerResult(this, uri)
+        if (resultCode == RESULT_OK) {
+            when (requestCode) {
+                9999 -> data?.data?.let { handleFilePickerResult(this, it) }
+                8888 -> data?.data?.let { handleDeviceExportResult(this, it) }
+                8889 -> data?.data?.let { handleDeviceImportResult(this, it) }
             }
         }
     }

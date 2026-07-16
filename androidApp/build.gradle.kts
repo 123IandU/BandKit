@@ -11,9 +11,9 @@ plugins {
 dependencies {
     implementation(project(":shared"))
     implementation(libs.androidx.activity)
-    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.2")
-    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.2")
-    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.2")
+    implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.3")
+    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.3")
+    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.3")
     debugImplementation(compose.uiTooling)
 }
 
@@ -32,6 +32,9 @@ android {
         targetSdk = BuildConfig.TARGET_SDK
         versionName = "1.0.0"
         versionCode = 1
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
     namespace = BuildConfig.APPLICATION_ID
     compileOptions {

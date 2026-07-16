@@ -30,3 +30,7 @@ actual fun launchSettingsActivity(context: Any) {}
 actual fun loadShowLogs(context: Any): Boolean = true
 
 actual fun saveShowLogs(context: Any, value: Boolean) {}
+
+actual suspend fun exportSavedDevicesToFile(context: Any, devices: List<SavedDevice>): Boolean = false
+
+actual suspend fun importSavedDevicesFromFile(context: Any): List<SavedDevice>? = null

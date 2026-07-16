@@ -14,6 +14,10 @@ expect fun loadSavedDevices(context: Any): List<SavedDevice>
 
 expect fun saveSavedDevices(context: Any, devices: List<SavedDevice>)
 
+expect suspend fun exportSavedDevicesToFile(context: Any, devices: List<SavedDevice>): Boolean
+
+expect suspend fun importSavedDevicesFromFile(context: Any): List<SavedDevice>?
+
 expect fun launchSettingsActivity(context: Any)
 
 expect fun loadShowLogs(context: Any): Boolean

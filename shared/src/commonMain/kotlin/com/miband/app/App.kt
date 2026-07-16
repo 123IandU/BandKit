@@ -9,11 +9,14 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -41,7 +44,9 @@ import com.miband.app.core.ScannedDevice
 import com.miband.app.core.createBandBurgManager
 import com.miband.app.core.createBluetoothScanner
 import com.miband.app.core.currentTimeMillis
+import com.miband.app.core.exportSavedDevicesToFile
 import com.miband.app.core.formatTimestamp
+import com.miband.app.core.importSavedDevicesFromFile
 import com.miband.app.core.initBandBurgContext
 import com.miband.app.core.launchSettingsActivity
 import com.miband.app.core.loadSavedDevices
@@ -75,6 +80,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.SearchDevice
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.preference.OverlayDropdownPreference
@@ -121,6 +127,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
         )
     }
 
+    var showDeviceList by remember { mutableStateOf(false) }
     var showAddDeviceDialog by remember { mutableStateOf(false) }
     var deviceFormTab by remember { mutableIntStateOf(0) }
     var deviceName by remember { mutableStateOf("") }
@@ -203,6 +210,14 @@ private fun AppContent(modifier: Modifier = Modifier) {
             topBar = {
                 SmallTopAppBar(
                     title = "BANDBURG",
+                    navigationIcon = {
+                        IconButton(onClick = { showDeviceList = true }) {
+                            Icon(
+                                imageVector = MiuixIcons.SearchDevice,
+                                contentDescription = "设备列表",
+                            )
+                        }
+                    },
                     actions = {
                         IconButton(onClick = { showSettings = true }) {
                             Icon(
@@ -214,7 +229,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 )
             },
         ) { innerPadding ->
-            Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+            Column(modifier = Modifier.fillMaxSize().padding(innerPadding).windowInsetsPadding(WindowInsets.navigationBars)) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -231,28 +246,6 @@ private fun AppContent(modifier: Modifier = Modifier) {
                                     ?: run { showAddDeviceDialog = true }
                             },
                         )
-                    }
-                    item {
-                        SavedDevicesSection(
-                            savedDevices,
-                            deviceSession,
-                            onConnect = ::connectToDevice,
-                            onDelete = { device ->
-                                if (deviceSession?.device?.id == device.id) disconnectFromDevice()
-                                savedDevices = savedDevices.filter { it.id != device.id }
-                                saveSavedDevices(context, savedDevices)
-                                addLog("${device.name} 已删除", LogType.SUCCESS)
-                            },
-                        )
-                    }
-                    item {
-                        Button(
-                            onClick = { showAddDeviceDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(),
-                        ) {
-                            Text("+ 添加新设备")
-                        }
                     }
                     item {
                         TabRow(
@@ -369,12 +362,65 @@ private fun AppContent(modifier: Modifier = Modifier) {
                     },
                 )
             }
+            if (showDeviceList) {
+                DeviceListBottomSheet(
+                    devices = savedDevices,
+                    currentSession = deviceSession,
+                    onConnect = ::connectToDevice,
+                    onDelete = { device ->
+                        if (deviceSession?.device?.id == device.id) disconnectFromDevice()
+                        savedDevices = savedDevices.filter { it.id != device.id }
+                        saveSavedDevices(context, savedDevices)
+                        addLog("${device.name} 已删除", LogType.SUCCESS)
+                    },
+                    onAddDevice = {
+                        showDeviceList = false
+                        showAddDeviceDialog = true
+                    },
+                    onDismiss = { showDeviceList = false },
+                )
+            }
             if (showSettings) {
                 SettingsBottomSheet(
                     showLogs = showLogs,
                     onShowLogsChange = {
                         showLogs = it
                         saveShowLogs(context, it)
+                    },
+                    onExport = {
+                        scope.launch {
+                            addLog("正在导出设备...", LogType.INFO)
+                            val success = withContext(IO) {
+                                exportSavedDevicesToFile(context, savedDevices)
+                            }
+                            if (success) {
+                                addLog("设备导出成功", LogType.SUCCESS)
+                            } else {
+                                addLog("设备导出失败或已取消", LogType.WARNING)
+                            }
+                        }
+                    },
+                    onImport = {
+                        scope.launch {
+                            addLog("正在导入设备...", LogType.INFO)
+                            val imported = withContext(IO) {
+                                importSavedDevicesFromFile(context)
+                            }
+                            if (imported != null) {
+                                val existingAddrs = savedDevices.map { it.addr }.toSet()
+                                val newDevices = imported.filter { it.addr !in existingAddrs }
+                                val skipped = imported.size - newDevices.size
+                                savedDevices = savedDevices + newDevices
+                                saveSavedDevices(context, savedDevices)
+                                val msg = buildString {
+                                    append("成功导入 ${newDevices.size} 个设备")
+                                    if (skipped > 0) append("，跳过 $skipped 个重复设备")
+                                }
+                                addLog(msg, LogType.SUCCESS)
+                            } else {
+                                addLog("设备导入失败或已取消", LogType.WARNING)
+                            }
+                        }
                     },
                     onDismiss = { showSettings = false },
                 )
@@ -388,6 +434,8 @@ private fun AppContent(modifier: Modifier = Modifier) {
 private fun SettingsBottomSheet(
     showLogs: Boolean,
     onShowLogsChange: (Boolean) -> Unit,
+    onExport: () -> Unit,
+    onImport: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     OverlayBottomSheet(
@@ -406,11 +454,96 @@ private fun SettingsBottomSheet(
             Switch(checked = showLogs, onCheckedChange = onShowLogsChange)
         }
         Spacer(modifier = Modifier.height(16.dp))
+        Text("设备管理", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Button(
+                onClick = onImport,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("导入设备")
+            }
+            Button(
+                onClick = onExport,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text("导出设备")
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
         Text("关于", fontSize = 16.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         Text("版本: 1.0.0", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
         SimpleDivider()
         Text("Powered by ASTROBOX", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+    }
+}
+
+// ─── DeviceListBottomSheet ───
+@Composable
+private fun DeviceListBottomSheet(
+    devices: List<SavedDevice>,
+    currentSession: com.miband.app.models.DeviceSession?,
+    onConnect: (SavedDevice) -> Unit,
+    onDelete: (SavedDevice) -> Unit,
+    onAddDevice: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    OverlayBottomSheet(
+        show = true,
+        title = "已保存设备",
+        onDismissRequest = onDismiss,
+    ) {
+        if (devices.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("暂无保存的设备", fontSize = 14.sp)
+            }
+        } else {
+            devices.forEachIndexed { index, device ->
+                val isCurrent = currentSession?.device?.id == device.id
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                        .clickable { onConnect(device) },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "${device.name}${if (isCurrent) " [当前]" else ""}",
+                            fontSize = 14.sp,
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                        )
+                        Text("${device.addr} · ${device.connectType}", fontSize = 12.sp)
+                    }
+                    Button(
+                        onClick = { onDelete(device) },
+                        colors = ButtonDefaults.buttonColors(
+                            color = MiuixTheme.colorScheme.error,
+                        ),
+                    ) {
+                        Text("删除")
+                    }
+                }
+                if (index < devices.lastIndex) {
+                    SimpleDivider()
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Button(
+            onClick = onAddDevice,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColorsPrimary(),
+        ) {
+            Text("添加新设备")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
@@ -433,7 +566,7 @@ fun SettingsScreen(onBack: () -> Unit, showLogs: Boolean = true, onShowLogsChang
         },
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxSize().padding(innerPadding).windowInsetsPadding(WindowInsets.navigationBars).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             item { Spacer(modifier = Modifier.height(4.dp)) }
@@ -510,55 +643,6 @@ private fun DeviceStatusBar(
                     colors = ButtonDefaults.buttonColorsPrimary(),
                 ) {
                     Text("连接设备")
-                }
-            }
-        }
-    }
-}
-
-// ─── SavedDevicesSection ───
-@Composable
-private fun SavedDevicesSection(
-    devices: List<SavedDevice>,
-    currentSession: com.miband.app.models.DeviceSession?,
-    onConnect: (SavedDevice) -> Unit,
-    onDelete: (SavedDevice) -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("已保存设备", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(8.dp))
-            if (devices.isEmpty()) {
-                Text("暂无保存的设备", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp))
-            } else {
-                devices.forEachIndexed { index, device ->
-                    val isCurrent = currentSession?.device?.id == device.id
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                            .clickable { onConnect(device) },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "${device.name}${if (isCurrent) " [当前]" else ""}",
-                                fontSize = 14.sp,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                            )
-                            Text("${device.addr} · ${device.connectType}", fontSize = 12.sp)
-                        }
-                        Button(
-                            onClick = { onDelete(device) },
-                            colors = ButtonDefaults.buttonColors(
-                                color = MiuixTheme.colorScheme.error,
-                            ),
-                        ) {
-                            Text("删除")
-                        }
-                    }
-                    if (index < devices.lastIndex) {
-                        SimpleDivider()
-                    }
                 }
             }
         }
