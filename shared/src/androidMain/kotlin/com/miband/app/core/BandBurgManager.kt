@@ -220,14 +220,11 @@ actual class BandBurgManager {
 
     /**
      * 从 RPK/ZIP 文件中提取第三方应用包名
-     * 优先读取 manifest.json 中的 "package" 字段，
-     * 其次扫描 ZIP 条目目录名匹配 com.xxx.xxx 格式
+     * 读取 manifest.json 中的 "package" 字段
      */
     private fun extractRpkgPackageName(fileData: ByteArray): String? {
         return try {
             val zis = ZipInputStream(ByteArrayInputStream(fileData))
-
-            // 第一遍：找 manifest.json 并解析 "package" 字段
             val rpkJson = Json { ignoreUnknownKeys = true }
             var entry = zis.nextEntry
             while (entry != null) {
@@ -236,36 +233,21 @@ actual class BandBurgManager {
                     val pkg = try {
                         val obj = rpkJson.parseToJsonElement(jsonText).jsonObject
                         obj["package"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-                    } catch (_: Exception) { null }
+                    } catch (_: Exception) {
+                        null
+                    }
+                    zis.close()
                     if (pkg != null) {
-                        zis.close()
                         Log.d(TAG, "extractRpkgPackageName: found from manifest.json: $pkg")
                         return pkg
                     }
+                    Log.w(TAG, "extractRpkgPackageName: manifest.json found but no 'package' field")
+                    return null
                 }
                 entry = zis.nextEntry
             }
-
-            // 第二遍：扫描目录名匹配 com.xxx.xxx
             zis.close()
-            val zis2 = ZipInputStream(ByteArrayInputStream(fileData))
-            entry = zis2.nextEntry
-            while (entry != null) {
-                val parts = entry.name.split("/")
-                for (part in parts) {
-                    if (part.count { it == '.' } >= 2) {
-                        val trimmed = part.trim()
-                        if (trimmed.matches(Regex("^[a-zA-Z][a-zA-Z0-9]*(\\.[a-zA-Z][a-zA-Z0-9]*)+$"))) {
-                            zis2.close()
-                            Log.d(TAG, "extractRpkgPackageName: found from path: $trimmed")
-                            return trimmed
-                        }
-                    }
-                }
-                entry = zis2.nextEntry
-            }
-            zis2.close()
-            Log.w(TAG, "extractRpkgPackageName: no package name found in RPK")
+            Log.w(TAG, "extractRpkgPackageName: no manifest.json found in RPK")
             null
         } catch (e: Exception) {
             Log.w(TAG, "extractRpkgPackageName failed: ${e.message}")

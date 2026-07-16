@@ -894,7 +894,6 @@ private fun InstallSection(
     var installProgress by remember { mutableStateOf(-1f) }
     var installMessage by remember { mutableStateOf("") }
     var isInstalling by remember { mutableStateOf(false) }
-    var packageNameInput by remember { mutableStateOf("") }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -922,18 +921,6 @@ private fun InstallSection(
                 selectedFile?.let { file ->
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("${file.name} (${file.data.size} 字节)", fontSize = 13.sp)
-
-                    // 对第三方应用（.rpk）显示包名输入框
-                    if (file.name.endsWith(".rpk", true)) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextField(
-                            value = packageNameInput,
-                            onValueChange = { packageNameInput = it },
-                            label = "包名（留空自动检测）",
-                            singleLine = true,
-                        )
-                    }
-
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
                         onClick = {
@@ -953,7 +940,7 @@ private fun InstallSection(
                                             file.name,
                                             file.data,
                                             resType,
-                                            packageNameInput.ifBlank { null },
+                                            null,
                                         ) { progress ->
                                             installProgress = progress
                                             installMessage = "安装 ${file.name}: ${(progress * 100).toInt()}%"
