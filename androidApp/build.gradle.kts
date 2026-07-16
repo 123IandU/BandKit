@@ -1,4 +1,4 @@
-﻿// Copyright 2026, compose-miuix-ui contributors
+// Copyright 2026, compose-miuix-ui contributors
 // SPDX-License-Identifier: Apache-2.0
 plugins {
     alias(libs.plugins.androidApplication)
@@ -49,12 +49,13 @@ android {
 // ======== Rust JNI 库自动编译 ========
 val rustProjectDir = rootProject.projectDir.resolve("rust/app_android")
 
-// 任务阶段初始化 git submodule，不阻塞配置缓存
+// 自动拉取 app_android submodule 到最新版本
 tasks.register<Exec>("initRustSubmodule") {
-    description = "Initialize git submodule for app_android if not cloned"
+    description = "Update git submodule to latest remote commit"
     workingDir = rootProject.projectDir
-    commandLine("git", "submodule", "update", "--init", "--recursive")
-    // 如果 submodule 已存在，git 什么都不做，不报错
+    // --remote: 更新到远程分支的最新 commit（而非父仓库记录的 commit）
+    commandLine("git", "submodule", "update", "--init", "--remote", "--recursive")
+    // 如果已是最新，git 什么都不做，不报错
     isIgnoreExitValue = true
 }
 

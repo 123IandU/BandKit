@@ -17,3 +17,6 @@ local.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# Rust JNI build artifacts
+androidApp/src/main/jniLibs/
