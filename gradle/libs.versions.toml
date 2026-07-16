@@ -6,7 +6,6 @@ kotlinx-serialization = "1.11.0"
 androidx-activity = "1.13.0"
 jetbrains-compose-multiplatform = "1.11.1"
 spotless = "8.6.0"
-rust-android = "0.10.1"
 
 [libraries]
 android-gradle-plugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
@@ -22,5 +21,4 @@ androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.lib
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "jetbrains-compose-multiplatform" }
-rustAndroid = { id = "net.mullvad.rust-android", version.ref = "rust-android" }
 kotlinxSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

@@ -4,26 +4,10 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.composeMultiplatform)
-    alias(libs.plugins.rustAndroid)
     id("module.kotlin-jvm-toolchain")
     id("module.spotless")
 }
 
-cargo {
-    module = "../rust/corelib-standalone"
-    libname = "corelib_standalone"
-    targets = listOf("arm64", "arm", "x86_64")
-    profile = "release"
-    features {
-        noDefaultBut("android-jni")
-    }
-}
-
-val rustJniLibsDir = layout.buildDirectory.dir("rustJniLibs/android")
-
-tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
-    dependsOn("cargoBuild")
-}
 
 dependencies {
     implementation(project(":shared"))
