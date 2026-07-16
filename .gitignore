@@ -20,3 +20,16 @@ Thumbs.db
 
 # Rust JNI build artifacts
 androidApp/src/main/jniLibs/
+
+# Android build artifacts
+androidApp/release/
+androidApp/build/
+androidApp/.cxx/
+
+# App-specific
+*.apk
+*.aab
+*.dm
+*.dex
+*.so
+!gradle/wrapper/gradle-wrapper.jar
