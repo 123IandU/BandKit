@@ -45,9 +45,9 @@ Kotlin Compose function naming rules are relaxed (`@Composable` functions can us
 
 - `shared/` — KMP common code. All platform apps depend on this. `App.kt` is the shared entrypoint.
   - `commonMain/` — shared models, core interfaces, ProtobufBuilder, App UI, ResponseParser, FileDetector
-  - `androidMain/` — BandBurgManager (Bluetooth + NativeLib), BluetoothScanner (BLE), NativeLib JNI, PlatformUtils/PlatformContext actuals
+  - `androidMain/` — BandBurgManager (NativeDevice adapter), BluetoothScanner (BLE), PlatformUtils/PlatformContext actuals
   - `desktopMain/` / `wasmJsMain/` — stubs for BandBurgManager, BluetoothScanner, PlatformUtils
-- `androidApp/` — Android shell (MainActivity), also has `cargo` block for Rust build, Preview.kt
+- `androidApp/` — Android shell (MainActivity), Preview.kt
 - `desktopApp/` — Desktop JVM app, depends on `:shared`, entry `MainKt`
 - `webApp/` — WasmJS app, depends on `:shared`
 - `build-plugins/` — Convention plugins (`module.spotless`, `module.kotlin-jvm-toolchain`) and `BuildConfig.kt`
@@ -88,9 +88,7 @@ Reference implementation: AstroBox-NG (`D:\Resource\AstroBox-NG`)
 - BuildConfig lives in `build-plugins/src/main/kotlin/BuildConfig.kt`, not generated
 - JitPack is used for dependencies (`jitpack.io` in repositories)
 - Configuration cache and parallel builds are enabled in `gradle.properties`
-- Rust targets must be installed: `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`
-- Rust build requires Visual Studio Build Tools with "C++ Desktop development" workload — MSYS2's `link.exe` in PATH will break cargo builds
-- `net.mullvad.rust-android` plugin (v0.10.1) manages Rust cross-compilation; `cargo` block config is in `androidApp/build.gradle.kts`
+- Native `.so` libraries are pre-built externally (`libastrobox_app_android.so`) and placed in `androidApp/src/main/jniLibs/`; no Rust compilation in Gradle
 - ktlint `modifier-clickable-order` rule: `.clickable` must come AFTER `.background(shape)`, not before
 - `expect`/`actual` classes (`BandBurgManager`, `BluetoothScanner`) — editing common code requires updating desktop/wasm stubs too
 - `kotlinx-serialization` is used in commonMain (`SavedDevice` is `@Serializable`); don't remove the plugin

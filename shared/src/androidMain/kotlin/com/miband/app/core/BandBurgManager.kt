@@ -47,6 +47,10 @@ actual class BandBurgManager {
         )
         Log.d(TAG, "Connect result: $result")
 
+        if (result.startsWith("Error:")) {
+            throw IllegalStateException("Device connect failed: $result")
+        }
+
         val session = DeviceSession(
             handle = addr.hashCode().toLong(),
             device = SavedDevice(
