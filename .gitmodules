@@ -3,4 +3,4 @@
 	url = https://github.com/123IandU/app_android.git
 [submodule "rust/app_wasm"]
 	path = rust/app_wasm
-	url = https://github.com/AstralSightStudios/AstroBox-NG-Module-AppWasm.git
+	url = https://github.com/123IandU/AstroBox-NG-Module-AppWasm.git
