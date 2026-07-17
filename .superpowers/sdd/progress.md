@@ -1,6 +1,0 @@
-Task 1: complete (commit 1dcf709, review clean)
-Task 2: complete (commit 621b942, review clean)
-Task 3: complete (commit ece2d12, review clean)
-Task 4: complete (commit e8b47f4, review clean)
-Task 5: complete (commit f02b15f, review clean)
-Fix: connect error handling + AGENTS.md update (commit 1c7eb1e)
