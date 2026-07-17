@@ -5,7 +5,7 @@ setlocal enabledelayedexpansion
 :menu
 cls
 echo ========================================
-echo       Miband Build Script
+echo       BandKit Build Script
 echo ========================================
 echo.
 echo   [1] Build Android APK (Debug)

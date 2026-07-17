@@ -1,6 +1,7 @@
-# Miband
+# BandKit
 
-Kotlin Multiplatform Compose project targeting Android, Desktop (JVM), and Web (WasmJS). UI uses Miuix library (`top.yukonga.miuix.kmp`).
+Kotlin Multiplatform Compose project targeting Android, Desktop (JVM), and Web (WasmJS).
+UI uses Miuix library (`top.yukonga.miuix.kmp`). Bluetooth SPP communication with Xiaomi wearable devices via Rust JNI.
 
 ## Build commands
 
@@ -16,8 +17,9 @@ Kotlin Multiplatform Compose project targeting Android, Desktop (JVM), and Web (
 # Web (WasmJS)
 ./gradlew :webApp:wasmJsBrowserDevelopmentRun
 
-# Rust native (Android only, triggered by assembleDebug/Release)
-./gradlew :androidApp:cargoBuild
+# Rust native (Android only) — 自动通过 assembleDebug/Release 触发
+./gradlew :androidApp:buildRustLibs      # 仅编译 Rust（3 目标并行）
+./gradlew :androidApp:copyRustLibs       # 编译 + 复制到 build/rust-jni/
 
 # Formatting (runs on all modules)
 ./gradlew spotlessApply
@@ -45,23 +47,26 @@ Kotlin Compose function naming rules are relaxed (`@Composable` functions can us
 ## Project structure
 
 - `shared/` — KMP common code. All platform apps depend on this. `App.kt` is the shared entrypoint.
-  - `commonMain/` — shared models, core interfaces, ProtobufBuilder, App UI, ResponseParser, FileDetector
-  - `androidMain/` — BandBurgManager (NativeDevice adapter), BluetoothScanner (BLE), PlatformUtils/PlatformContext actuals
+  - `commonMain/` — models, core interfaces (BandBurgManager, BluetoothScanner, FileDetector), ProtobufBuilder, App UI, ResponseParser, PlatformUtils
+  - `androidMain/` — BandBurgManager (NativeDevice JNI adapter), BluetoothScanner (BLE), PlatformUtils/PlatformContext actuals
   - `desktopMain/` / `wasmJsMain/` — stubs for BandBurgManager, BluetoothScanner, PlatformUtils
-- `androidApp/` — Android shell (MainActivity), Preview.kt
+- `androidApp/` — Android shell (MainActivity, AndroidManifest, jniLibs), bundletool build tasks. Rust JNI auto-build integration in build.gradle.kts
 - `desktopApp/` — Desktop JVM app, depends on `:shared`, entry `MainKt`
 - `webApp/` — WasmJS app, depends on `:shared`
 - `build-plugins/` — Convention plugins (`module.spotless`, `module.kotlin-jvm-toolchain`) and `BuildConfig.kt`
-- `rust/` — Rust native code (corelib-standalone + pb protobuf library)
+- `rust/` — Rust native code
+  - `app_android/` — Android JNI cdylib (`bandkit-app-android`), compiles to `libbandkit_app_android.so`
+  - `app_wasm/` — WasmJS binding crate
 - `gradle/libs.versions.toml` — Version catalog
 
 ## Key versions
 
-- Gradle 9.5.1, AGP 9.2.1, Kotlin 2.4.0
-- Compose Multiplatform 1.11.1
-- Miuix UI/Icons/Preference 0.9.3
-- Rust 1.90.0+ (edition 2024), JDK 21 (toolchain)
-- Android compileSdk 37, minSdk 23, NDK 30.0.14904198
+- Gradle 9.5.1, AGP 9.2.1, Kotlin 2.4.0, kotlinx-serialization 1.11.0
+- Compose Multiplatform 1.11.1, AndroidX Activity 1.13.0
+- Miuix UI/Icons/Preference 0.9.3 (hardcoded in androidApp/build.gradle.kts)
+- Rust edition 2021 (crate `bandkit-app-android`), JDK 21 (toolchain)
+- Android compileSdk 37, minSdk 23, targetSdk 37, NDK 30.0.14904198
+- bundletool 1.18.1 (downloaded on demand to `tools/`)
 
 ## Protocol stack
 
@@ -72,7 +77,17 @@ The project implements the Xiaomi Vela wearable device communication protocol:
 - **Protobuf**: WearPacket with 22+ subsystem types (Account, System, WatchFace, ThirdpartyApp, etc.)
 - **Auth**: HMAC-SHA256 KDF with tag "miwear-auth", AES-128-CCM for companion device info
 
-Reference implementation: AstroBox-NG (`D:\Resource\AstroBox-NG`)
+Reference implementation: AstroBox-NG (`D:\Resource\AstroBox-NG`). Rust core protocol crate: `corelib` (git dep from `AstroBox-NG-Module-Core`).
+
+## Rust JNI build pipeline
+
+集成在 `androidApp/build.gradle.kts` 中，配置缓存兼容：
+
+1. **编译** — 三个 `Exec` 任务 `buildRustLibsArm64v8a`/`Armeabiv7a`/`X86_64` 并行运行 `cargo build --target <triple> -p bandkit-app-android`，工作目录 `rust/app_android/`
+2. **复制** — 三个 `Copy` 任务 `copyRustLibsArm64v8a`/`Armeabiv7a`/`X86_64` 将 `.so` 从 `rust/app_android/target/<triple>/<mode>/` 复制到 `build/rust-jni/<abi>/`
+3. **打包** — `mergeDebugJniLibFolders`/`mergeReleaseJniLibFolders` 依赖 `copyRustLibs`，自动打包进 APK
+
+Cargo 配置 `.cargo/config.toml` 指定 NDK 链接器路径。
 
 ## Miuix components used
 
@@ -89,7 +104,6 @@ Reference implementation: AstroBox-NG (`D:\Resource\AstroBox-NG`)
 - BuildConfig lives in `build-plugins/src/main/kotlin/BuildConfig.kt`, not generated
 - JitPack is used for dependencies (`jitpack.io` in repositories)
 - Configuration cache and parallel builds are enabled in `gradle.properties`
-- Rust `.so` libraries are built automatically by Gradle during `assembleDebug`/`assembleRelease` — no separate `cargoBuild` step needed
 - ktlint `modifier-clickable-order` rule: `.clickable` must come AFTER `.background(shape)`, not before
 - `expect`/`actual` classes (`BandBurgManager`, `BluetoothScanner`) — editing common code requires updating desktop/wasm stubs too
 - `kotlinx-serialization` is used in commonMain (`SavedDevice` is `@Serializable`); don't remove the plugin
@@ -104,4 +118,5 @@ Reference implementation: AstroBox-NG (`D:\Resource\AstroBox-NG`)
 - Auth flow: SPP hello → L1StartReq → AuthStep1 → wait DeviceVerify → nativeHandleAuthStep2 → AppConfirm → L2 cipher active
 - File install MASS protocol: `comp_data(0x00) | data_type(1B) | md5(16B) | length(4B LE) | data | crc32(4B LE)`
 - Watchface install uses `PrepareInstallWatchFace` (type=4, id=4), ThirdPartyApp uses `PrepareInstallApp` (type=20, id=1)
-- Reference projects: BandBurg web app (`D:\Resource\bandburg`), AstroBox-NG Rust lib (`D:\Resource\AstroBox-NG`)
+- Rust source files MUST be UTF-8 (no GBK/other encoding) — rustc requires it. Use `/// English` comments.
+- Rust `Exec` tasks run parallelly and can contend for Cargo package lock; sequential execution is normal.

@@ -92,98 +92,94 @@ android {
     }
 }
 
-// ======== Rust JNI 库自动编译（多架构） ========
+// ======== Rust JNI 库 - 自动编译 + 复制（兼容配置缓存）=======
+
+// 全部在配置阶段解析，只捕获 Serializable 值
+val rustAbiMap = mapOf(
+    "aarch64-linux-android" to "arm64-v8a",
+    "armv7-linux-androideabi" to "armeabi-v7a",
+    "x86_64-linux-android" to "x86_64",
+)
 val rustProjectDir = rootProject.projectDir.resolve("rust/app_android")
-val isRelease = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
-val buildMode = if (isRelease) "release" else "debug"
+val rustTargetDir = rustProjectDir.resolve("target")
+val rustMode = if (!gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) "debug" else "release"
+val rustJniOutput = layout.buildDirectory.dir("rust-jni").get().asFile.absolutePath
 
-// 架构映射：abi名称 -> Rust target
-val rustTargets =
-    mapOf(
-        "arm64-v8a" to "aarch64-linux-android",
-        "armeabi-v7a" to "armv7-linux-androideabi",
-        "x86_64" to "x86_64-linux-android",
-    )
+// ======== 编译任务 ========
+rustAbiMap.forEach { (triple, abi) ->
+    val abiId = abi.replace("-", "").replaceFirstChar { it.uppercase() }
+    val buildTaskName = "buildRustLibs$abiId"
 
-// NDK strip 工具路径（从环境变量获取）
-val ndkHome = System.getenv("ANDROID_NDK_HOME") ?: "${System.getenv("ANDROID_HOME")}/ndk/${android.ndkVersion}"
-val stripTool = file("$ndkHome/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip")
-
-// 自动拉取 app_android submodule 到最新版本
-tasks.register<Exec>("initRustSubmodule") {
-    description = "Update git submodule to latest remote commit"
-    workingDir = rootProject.projectDir
-    // --remote: 更新到远程分支的最新 commit（而非父仓库记录的 commit）
-    commandLine("git", "submodule", "update", "--init", "--remote", "--recursive")
-    // 如果已是最新，git 什么都不做，不报错
-    isIgnoreExitValue = true
-}
-
-// 为每种架构创建编译任务
-rustTargets.forEach { (abi, rustTarget) ->
-    val safeAbi = abi.replace("-", "_")
-    val buildTaskName = "buildRustLib_$safeAbi"
-    val copyTaskName = "copyRustLib_$safeAbi"
-    val stripTaskName = "stripRustLib_$safeAbi"
-
-    tasks.register<Exec>(buildTaskName) {
-        dependsOn("initRustSubmodule")
-        description = "Compile Rust JNI .so for $abi"
+    tasks.register(buildTaskName, Exec::class.java) {
+        description = "编译 Rust $triple (bandkit-app-android)"
+        group = "BandKit"
         workingDir = rustProjectDir
-        val cargoArgs = mutableListOf("build", "--target", rustTarget)
-        if (isRelease) cargoArgs.add("--release")
-        commandLine("cargo", *cargoArgs.toTypedArray())
+        commandLine(
+            "cargo", "build",
+            "--target", triple,
+            "-p", "bandkit-app-android",
+        )
+        // 输出目录声明，用于增量构建判断
+        outputs.dir(rustTargetDir.resolve("$triple/$rustMode"))
     }
+}
 
-    tasks.register<Copy>(copyTaskName) {
+// 总编译任务
+val rustBuildTasks = rustAbiMap.keys.map { triple ->
+    val abi = rustAbiMap[triple]!!
+    val abiId = abi.replace("-", "").replaceFirstChar { it.uppercase() }
+    "buildRustLibs$abiId"
+}
+tasks.register("buildRustLibs") {
+    description = "编译所有 Rust 目标"
+    group = "BandKit"
+    dependsOn(rustBuildTasks)
+}
+
+// ======== 复制任务 ========
+rustAbiMap.forEach { (triple, abi) ->
+    val abiId = abi.replace("-", "").replaceFirstChar { it.uppercase() }
+    val copyTaskName = "copyRustLibs$abiId"
+    val buildTaskName = "buildRustLibs$abiId"
+    val srcDir = rustTargetDir.resolve("$triple/$rustMode").absolutePath
+    val dstDir = "$rustJniOutput/$abi"
+
+    tasks.register(copyTaskName, Copy::class.java) {
+        description = "复制 $triple/libbandkit_app_android.so 到 build/rust-jni/$abi/"
+        group = "BandKit"
         dependsOn(buildTaskName)
-        description = "Copy compiled .so for $abi to build/rust-jni"
-        from(rustProjectDir.resolve("target/$rustTarget/$buildMode/libastrobox_app_android.so"))
-        into(layout.buildDirectory.dir("rust-jni").map { it.dir(abi) })
-    }
-
-    // strip debug symbols（仅 release 构建）
-    if (isRelease) {
-        tasks.register<Exec>(stripTaskName) {
-            dependsOn(copyTaskName)
-            description = "Strip debug symbols from .so for $abi"
-            val soFile =
-                layout.buildDirectory
-                    .file("rust-jni/$abi/libastrobox_app_android.so")
-                    .get()
-                    .asFile
-            commandLine(stripTool.absolutePath, "--strip-all", soFile.absolutePath)
+        from(srcDir) {
+            include("libbandkit_app_android.so")
         }
+        into(dstDir)
     }
 }
 
-// 注册 build/rust-jni 为 jniLibs 源目录
+// 总复制任务
+val rustCopyTasks = rustAbiMap.values.map { abi ->
+    val abiId = abi.replace("-", "").replaceFirstChar { it.uppercase() }
+    "copyRustLibs$abiId"
+}
+tasks.register("copyRustLibs") {
+    description = "编译 + 复制 Rust .so 到 build/rust-jni/"
+    group = "BandKit"
+    dependsOn(rustCopyTasks)
+}
+
+// 绑定到 Android 构建生命周期
+val jniMergeTasks = mutableListOf<String>().apply {
+    // debug 和 release 的 JNI 合并任务
+    listOf("debug", "release").forEach { variant ->
+        add("merge${variant.replaceFirstChar { it.uppercase() }}JniLibFolders")
+        add("merge${variant.replaceFirstChar { it.uppercase() }}NativeLibs")
+    }
+}
+tasks.matching { it.name in jniMergeTasks }
+    .configureEach { dependsOn("copyRustLibs") }
+
+// 注册 jniLibs 源目录
 afterEvaluate {
-    android.sourceSets
-        .getByName("release")
-        .jniLibs
-        .srcDirs(
-            layout.buildDirectory
-                .dir("rust-jni")
-                .get()
-                .asFile,
-        )
-    android.sourceSets
-        .getByName("debug")
-        .jniLibs
-        .srcDirs(
-            layout.buildDirectory
-                .dir("rust-jni")
-                .get()
-                .asFile,
-        )
-}
-
-// 确保 Rust .so 在 mergeJniLibFolders 之前准备好
-tasks.matching { it.name.contains("merge") && it.name.contains("JniLibFolders") }.configureEach {
-    if (isRelease) {
-        dependsOn(tasks.matching { it.name.startsWith("stripRustLib_") })
-    } else {
-        dependsOn(tasks.matching { it.name.startsWith("copyRustLib_") })
-    }
+    val jniDir = layout.buildDirectory.dir("rust-jni").get().asFile
+    android.sourceSets.getByName("debug").jniLibs.srcDirs(jniDir)
+    android.sourceSets.getByName("release").jniLibs.srcDirs(jniDir)
 }

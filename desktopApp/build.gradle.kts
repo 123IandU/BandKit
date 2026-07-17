@@ -27,7 +27,7 @@ compose.desktop {
         mainClass = "MainKt"
         nativeDistributions {
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
-            packageName = "Miband"
+            packageName = "BandKit"
             packageVersion = "1.0.0"
             vendor = "Example"
         }

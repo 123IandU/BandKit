@@ -1,6 +1,6 @@
 object BuildConfig {
-    const val APPLICATION_NAME = "Miband"
-    const val APPLICATION_ID = "com.miband.app"
+    const val APPLICATION_NAME = "BandKit"
+    const val APPLICATION_ID = "com.bandkit.app"
     const val COMPILE_SDK = 37
     const val COMPILE_SDK_MINOR = 0
     const val TARGET_SDK = 37

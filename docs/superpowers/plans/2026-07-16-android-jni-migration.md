@@ -1,11 +1,9 @@
-# Android JNI 迁移：Kotlin Core → Native .so 库 实现计划
+﻿# Android JNI 迁移：Kotlin Core �?Native .so �?实现计划
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 用预编译 `libastrobox_app_android.so` 替代内建 `libcorelib_standalone.so`，将 BandBurgManager Android actual 重写为 NativeDevice 适配层
-
-**Architecture:** NativeDevice 内部管理蓝牙 + 协议，Kotlin 侧只做 JSON 解析和协程桥接。expect 接口不变，Desktop/Wasm stub 不变。
-
+**Goal:** 用预编译 `libbandkit_app_android.so` 替代内建 `libcorelib_standalone.so`，将 BandBurgManager Android actual 重写�?NativeDevice 适配�?
+**Architecture:** NativeDevice 内部管理蓝牙 + 协议，Kotlin 侧只�?JSON 解析和协程桥接。expect 接口不变，Desktop/Wasm stub 不变�?
 **Tech Stack:** Kotlin/JNI, `kotlinx.serialization.json`, `kotlinx.coroutines`
 
 ## Global Constraints
@@ -25,18 +23,17 @@
 - Create: `androidApp/src/main/java/com/astrobox/app/NativeDevice.kt`
 
 **Interfaces:**
-- Produces: `NativeDevice` object，所有方法同步阻塞（内部 tokio runtime）
-
+- Produces: `NativeDevice` object，所有方法同步阻塞（内部 tokio runtime�?
 - [ ] **Step 1: 创建 NativeDevice.kt**
 
 ```kotlin
 // Copyright 2026, compose-miuix-ui contributors
 // SPDX-License-Identifier: Apache-2.0
-package com.astrobox.app
+package com.bandkit.app.core
 
 object NativeDevice {
     init {
-        System.loadLibrary("astrobox_app_android")
+        System.loadLibrary("bandkit_app_android")
     }
 
     // ======== 事件回调 ========
@@ -72,7 +69,7 @@ object NativeDevice {
     external fun watchfaceSetCurrent(addr: String, watchfaceId: String): Boolean
     external fun watchfaceUninstall(addr: String, watchfaceId: String): Boolean
 
-    // ======== 第三方应用 ========
+    // ======== 第三方应�?========
     external fun thirdpartyappGetList(addr: String): String
     external fun thirdpartyappSendMessage(addr: String, packageName: String, data: String): Boolean
     external fun thirdpartyappLaunch(addr: String, packageName: String, page: String): Boolean
@@ -86,34 +83,33 @@ object NativeDevice {
 .\gradlew.bat :androidApp:compileDebugKotlin
 ```
 
-期望：编译通过（symbol 解析在链接时完成，编译阶段不需要 .so 存在即可通过）
-
+期望：编译通过（symbol 解析在链接时完成，编译阶段不需�?.so 存在即可通过�?
 ---
 
 ### Task 2: 重写 BandBurgManager Android actual
 
 **Files:**
-- Modify: `shared/src/androidMain/kotlin/com/miband/app/core/BandBurgManager.kt` — 完整重写
+- Modify: `shared/src/androidMain/kotlin/com/miband/app/core/BandBurgManager.kt` �?完整重写
 
 **Interfaces:**
 - Consumes: `NativeDevice` (Task 1), `ResponseParser.parseDeviceInfo`, `ResponseParser.parseWatchfaceList`, `ResponseParser.parseAppList`, `DeviceSession`, `SavedDevice`, `DeviceInfo`, `Watchface`, `InstalledApp`
 - Produces: `actual class BandBurgManager`, `actual fun createBandBurgManager()`, `actual fun initBandBurgContext()`
 
-- [ ] **Step 1: 写入新的适配层代码**
+- [ ] **Step 1: 写入新的适配层代�?*
 
 ```kotlin
 // Copyright 2026, compose-miuix-ui contributors
 // SPDX-License-Identifier: Apache-2.0
-package com.miband.app.core
+package com.bandkit.app.core
 
 import android.content.Context
 import android.util.Log
-import com.astrobox.app.NativeDevice
-import com.miband.app.models.DeviceInfo
-import com.miband.app.models.DeviceSession
-import com.miband.app.models.InstalledApp
-import com.miband.app.models.SavedDevice
-import com.miband.app.models.Watchface
+import com.bandkit.app.core.NativeDevice
+import com.bandkit.app.models.DeviceInfo
+import com.bandkit.app.models.DeviceSession
+import com.bandkit.app.models.InstalledApp
+import com.bandkit.app.models.SavedDevice
+import com.bandkit.app.models.Watchface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -310,7 +306,7 @@ actual fun initBandBurgContext(manager: BandBurgManager, context: Any) {
 
 ---
 
-### Task 3: 删除旧 NativeLib
+### Task 3: 删除�?NativeLib
 
 **Files:**
 - Delete: `shared/src/androidMain/kotlin/com/bandburg/core/NativeLib.kt`
@@ -318,14 +314,13 @@ actual fun initBandBurgContext(manager: BandBurgManager, context: Any) {
 **Interfaces:**
 - Consumes: 无（Task 2 完成后不再引用）
 
-- [ ] **Step 1: 确认无引用**
+- [ ] **Step 1: 确认无引�?*
 
 ```powershell
 Select-String -Path "D:\Android\Project\Miband\shared\src\androidMain\kotlin\com\miband\app\core\BandBurgManager.kt" -Pattern "com\.bandburg\.core\.NativeLib"
 ```
 
-期望：无匹配（Task 2 已移除 import）
-
+期望：无匹配（Task 2 已移�?import�?
 - [ ] **Step 2: 删除文件**
 
 ```powershell
@@ -349,19 +344,15 @@ Remove-Item "D:\Android\Project\Miband\shared\src\androidMain\kotlin\com\bandbur
 - Modify: `gradle/libs.versions.toml`
 
 **Interfaces:**
-- Consumes: 无
-- Produces: 无 rust-android-gradle 依赖
+- Consumes: �?- Produces: �?rust-android-gradle 依赖
 
-- [ ] **Step 1: 修改 androidApp/build.gradle.kts — 删除 rust 相关配置**
+- [ ] **Step 1: 修改 androidApp/build.gradle.kts �?删除 rust 相关配置**
 
 删除以下行：
-- L7: `alias(libs.plugins.rustAndroid)` — 插件声明
-- L12-L20: `cargo { ... }` — cargo 配置块
-- L22: `val rustJniLibsDir = ...` — 未使用变量
-- L24-L26: `tasks.matching { ... }.configureEach { dependsOn("cargoBuild") }` — 任务依赖
+- L7: `alias(libs.plugins.rustAndroid)` �?插件声明
+- L12-L20: `cargo { ... }` �?cargo 配置�?- L22: `val rustJniLibsDir = ...` �?未使用变�?- L24-L26: `tasks.matching { ... }.configureEach { dependsOn("cargoBuild") }` �?任务依赖
 
-修改后的文件：
-
+修改后的文件�?
 ```kotlin
 // Copyright 2026, compose-miuix-ui contributors
 // SPDX-License-Identifier: Apache-2.0
@@ -409,10 +400,9 @@ android {
 }
 ```
 
-- [ ] **Step 2: 修改 gradle/libs.versions.toml — 移除 rust-android**
+- [ ] **Step 2: 修改 gradle/libs.versions.toml �?移除 rust-android**
 
-删除：
-- `[versions]` 中的 `rust-android = "0.10.1"`
+删除�?- `[versions]` 中的 `rust-android = "0.10.1"`
 - `[plugins]` 中的 `rustAndroid = { id = "net.mullvad.rust-android", version.ref = "rust-android" }`
 
 - [ ] **Step 3: 编译验证**
@@ -425,12 +415,11 @@ android {
 
 ---
 
-### Task 5: 全量编译 + 格式化验证
-
+### Task 5: 全量编译 + 格式化验�?
 **Files:**
-- 无新建/修改
+- 无新�?修改
 
-- [ ] **Step 1: spotless 格式化**
+- [ ] **Step 1: spotless 格式�?*
 
 ```powershell
 .\gradlew.bat spotlessApply
@@ -442,9 +431,9 @@ android {
 .\gradlew.bat :androidApp:assembleDebug
 ```
 
-期望：APK 构建成功，`libastrobox_app_android.so` 正常打包
+期望：APK 构建成功，`libbandkit_app_android.so` 正常打包
 
-- [ ] **Step 3: 编译检查其他平台不受影响**
+- [ ] **Step 3: 编译检查其他平台不受影�?*
 
 ```powershell
 .\gradlew.bat :shared:compileKotlinDesktop :shared:compileKotlinWasmJs

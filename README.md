@@ -13,7 +13,7 @@
 ## 技术栈
 
 - **前端**: Kotlin Multiplatform Compose (Miuix UI)
-- **后端协议**: Rust + JNI (libastrobox_app_android.so)
+- **后端协议**: Rust + JNI (libbandkit_app_android.so)
 - **平台**: Android (targetSdk 37)
 
 ## 构建

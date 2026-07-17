@@ -16,4 +16,4 @@
 -keep class top.yukonga.miuix.kmp.** { *; }
 
 # Keep JNI bridge
--keep class com.astrobox.app.NativeDevice { *; }
+-keep class com.bandkit.app.core.NativeDevice { *; }

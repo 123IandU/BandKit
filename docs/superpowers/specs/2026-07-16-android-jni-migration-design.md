@@ -1,11 +1,11 @@
-# Android JNI 迁移：Kotlin Core → Native .so 库
+﻿# Android JNI 迁移：Kotlin Core → Native .so 库
 
 > 日期: 2026-07-16  
 > 状态: 已设计，待实现
 
 ## 目标
 
-用预编译的 `libastrobox_app_android.so` 替代内建编译的 `libcorelib_standalone.so`，将蓝牙连接和协议处理全部下沉到 native 层。Android `BandBurgManager` actual 改为薄适配层，通过 `NativeDevice` JNI 桥接。
+用预编译的 `libbandkit_app_android.so` 替代内建编译的 `libcorelib_standalone.so`，将蓝牙连接和协议处理全部下沉到 native 层。Android `BandBurgManager` actual 改为薄适配层，通过 `NativeDevice` JNI 桥接。
 
 ## 架构变更
 
@@ -20,7 +20,7 @@ App.kt (commonMain) → expect BandBurgManager
 迁移后:
 App.kt (commonMain) → expect BandBurgManager
                          ↓ actual (androidMain)
-                     [薄适配层 ~100行] → NativeDevice (JNI) → libastrobox_app_android.so
+                     [薄适配层 ~100行] → NativeDevice (JNI) → libbandkit_app_android.so
                                           (预编译 .so, jniLibs)
 ```
 
@@ -91,7 +91,7 @@ App.kt (commonMain) → expect BandBurgManager
 Debug .so ~250MB 不可打包 APK。编译 release 版：
 
 ```bash
-cargo build --release --target aarch64-linux-android -p astrobox-app-android ^
+cargo build --release --target aarch64-linux-android -p bandkit-app-android ^
   --manifest-path D:\Resource\app_android\Cargo.toml ^
   --config "target.aarch64-linux-android.linker=..."
 ```
