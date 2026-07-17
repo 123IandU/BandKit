@@ -740,7 +740,7 @@ private fun AddDeviceBottomSheet(
                     TextField(
                         value = addr,
                         onValueChange = onAddrChange,
-                        label = "设备地址（可选）",
+                        label = "设备地址*",
                         singleLine = true,
                     )
                     Spacer(modifier = Modifier.height(12.dp))
