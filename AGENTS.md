@@ -34,6 +34,7 @@ Windows: use `gradlew.bat` or run `build.bat` for an interactive menu.
 Spotless with ktlint + compose rules is enforced. Run `spotlessApply` before committing.
 
 Every `.kt` and `.kts` file must have this header:
+
 ```
 // Copyright 2026, compose-miuix-ui contributors
 // SPDX-License-Identifier: Apache-2.0
@@ -58,7 +59,7 @@ Kotlin Compose function naming rules are relaxed (`@Composable` functions can us
 
 - Gradle 9.5.1, AGP 9.2.1, Kotlin 2.4.0
 - Compose Multiplatform 1.11.1
-- Miuix UI/Icons/Preference 0.9.2
+- Miuix UI/Icons/Preference 0.9.3
 - Rust 1.90.0+ (edition 2024), JDK 21 (toolchain)
 - Android compileSdk 37, minSdk 23, NDK 30.0.14904198
 
@@ -88,7 +89,7 @@ Reference implementation: AstroBox-NG (`D:\Resource\AstroBox-NG`)
 - BuildConfig lives in `build-plugins/src/main/kotlin/BuildConfig.kt`, not generated
 - JitPack is used for dependencies (`jitpack.io` in repositories)
 - Configuration cache and parallel builds are enabled in `gradle.properties`
-- Native `.so` libraries are pre-built externally (`libastrobox_app_android.so`) and placed in `androidApp/src/main/jniLibs/`; no Rust compilation in Gradle
+- Rust `.so` libraries are built automatically by Gradle during `assembleDebug`/`assembleRelease` — no separate `cargoBuild` step needed
 - ktlint `modifier-clickable-order` rule: `.clickable` must come AFTER `.background(shape)`, not before
 - `expect`/`actual` classes (`BandBurgManager`, `BluetoothScanner`) — editing common code requires updating desktop/wasm stubs too
 - `kotlinx-serialization` is used in commonMain (`SavedDevice` is `@Serializable`); don't remove the plugin
