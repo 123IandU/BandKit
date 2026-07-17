@@ -27,6 +27,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +73,8 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.InfiniteProgressIndicator
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.NavigationBar
+import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Switch
@@ -80,8 +83,10 @@ import top.yukonga.miuix.kmp.basic.TabRowWithContour
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Play
@@ -139,16 +144,18 @@ private fun AppContent(modifier: Modifier = Modifier) {
 
     var activeTab by remember { mutableIntStateOf(0) }
     var showLogs by remember { mutableStateOf(loadShowLogs(context)) }
-    var showSettings by remember { mutableStateOf(false) }
+    var selectedNavIndex by remember { mutableIntStateOf(0) }
     var connectionStatus by remember { mutableStateOf(ConnectionStatus.DISCONNECTED) }
     var deviceSession by remember { mutableStateOf<com.bandkit.app.models.DeviceSession?>(null) }
     var deviceInfo by remember { mutableStateOf(DeviceInfo()) }
-    var savedDevices by remember { mutableStateOf(loadSavedDevices(context)) }
-    var watchfaces by remember { mutableStateOf(emptyList<Watchface>()) }
-    var apps by remember { mutableStateOf(emptyList<InstalledApp>()) }
-    var logs by remember {
-        mutableStateOf(
-            listOf(LogEntry(currentTimeMillis(), "欢迎使用 BandKit - Vela 设备管理工具")),
+    val savedDevices = remember { mutableStateListOf<SavedDevice>() }.also {
+        if (it.isEmpty()) it.addAll(loadSavedDevices(context))
+    }
+    val watchfaces = remember { mutableStateListOf<Watchface>() }
+    val apps = remember { mutableStateListOf<InstalledApp>() }
+    val logs = remember {
+        mutableStateListOf(
+            LogEntry(currentTimeMillis(), "欢迎使用 BandKit - Vela 设备管理工具"),
         )
     }
 
@@ -159,11 +166,12 @@ private fun AppContent(modifier: Modifier = Modifier) {
     var deviceAuthkey by remember { mutableStateOf("") }
     var deviceSarVersion by remember { mutableIntStateOf(1) }
     var deviceConnectTypeBle by remember { mutableStateOf(false) }
-    var scannedDevices by remember { mutableStateOf(emptyList<ScannedDevice>()) }
+    val scannedDevices = remember { mutableStateListOf<ScannedDevice>() }
     var isScanning by remember { mutableStateOf(false) }
 
     val addLog: (String, LogType) -> Unit = { message, type ->
-        logs = listOf(LogEntry(currentTimeMillis(), message, type)) + logs.take(49)
+        logs.add(0, LogEntry(currentTimeMillis(), message, type))
+        if (logs.size > 50) logs.removeLast()
     }
 
     fun connectToDevice(device: SavedDevice) {
@@ -193,6 +201,21 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 deviceInfo = info
                 addLog("设备: ${info.model} (${info.firmwareVersion})", LogType.SUCCESS)
                 addLog("电量: ${info.batteryPercent}% | 存储: ${info.totalStorage}", LogType.SUCCESS)
+                addLog("正在加载表盘和应用列表...", LogType.INFO)
+                try {
+                    val wf = withContext(IO) { manager.getWatchfaceList(session) }
+                    watchfaces.clear(); watchfaces.addAll(wf)
+                    addLog("已加载 ${wf.size} 个表盘", LogType.SUCCESS)
+                } catch (e: Exception) {
+                    addLog("表盘加载失败: ${e.message}", LogType.ERROR)
+                }
+                try {
+                    val appList = withContext(IO) { manager.getAppList(session) }
+                    apps.clear(); apps.addAll(appList)
+                    addLog("已加载 ${appList.size} 个应用", LogType.SUCCESS)
+                } catch (e: Exception) {
+                    addLog("应用加载失败: ${e.message}", LogType.ERROR)
+                }
             } catch (e: Exception) {
                 connectionStatus = ConnectionStatus.DISCONNECTED
                 addLog("连接失败: ${e.message}", LogType.ERROR)
@@ -208,6 +231,8 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 deviceSession = null
                 connectionStatus = ConnectionStatus.DISCONNECTED
                 deviceInfo = DeviceInfo()
+                watchfaces.clear()
+                apps.clear()
                 addLog("已断开", LogType.SUCCESS)
             }
         }
@@ -235,75 +260,188 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 SmallTopAppBar(
                     title = "BANDKIT",
                     navigationIcon = {
-                        val deviceEntries = listOf(
-                            DropdownEntry(
-                                items = savedDevices.map { device ->
-                                    val isCurrent = deviceSession?.device?.id == device.id
-                                    DropdownItem(
-                                        text = device.name + if (isCurrent) " [当前]" else "",
-                                        summary = "${device.addr} · ${device.connectType}",
-                                        selected = isCurrent,
-                                        onClick = { connectToDevice(device) },
-                                    )
-                                },
-                            ),
-                        )
-                        OverlayIconCascadingDropdownMenu(
-                            entry = deviceEntries.firstOrNull() ?: DropdownEntry(items = emptyList()),
-                        ) {
-                            Icon(
-                                imageVector = MiuixIcons.Link,
-                                contentDescription = "设备列表",
+                        if (selectedNavIndex == 0) {
+                            val deviceEntries = listOf(
+                                DropdownEntry(
+                                    items = savedDevices.map { device ->
+                                        val isCurrent = deviceSession?.device?.id == device.id
+                                        DropdownItem(
+                                            text = device.name + if (isCurrent) " [当前]" else "",
+                                            summary = "${device.addr} · ${device.connectType}",
+                                            selected = isCurrent,
+                                            onClick = { connectToDevice(device) },
+                                        )
+                                    },
+                                ),
                             )
+                            OverlayIconCascadingDropdownMenu(
+                                entry = deviceEntries.firstOrNull() ?: DropdownEntry(items = emptyList()),
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Link,
+                                    contentDescription = "设备列表",
+                                )
+                            }
                         }
                     },
                     actions = {
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(
-                                imageVector = MiuixIcons.Settings,
-                                contentDescription = "设置",
-                            )
+                        if (selectedNavIndex == 0) {
+                            IconButton(onClick = { showAddDeviceDialog = true }) {
+                                Icon(
+                                    imageVector = MiuixIcons.Add,
+                                    contentDescription = "添加设备",
+                                )
+                            }
                         }
                     },
                 )
             },
+            bottomBar = {
+                NavigationBar {
+                    NavigationBarItem(
+                        selected = selectedNavIndex == 0,
+                        onClick = { selectedNavIndex = 0 },
+                        icon = MiuixIcons.Home,
+                        label = "设备",
+                    )
+                    NavigationBarItem(
+                        selected = selectedNavIndex == 1,
+                        onClick = { selectedNavIndex = 1 },
+                        icon = MiuixIcons.Settings,
+                        label = "设置",
+                    )
+                }
+            },
         ) { innerPadding ->
             Column(modifier = Modifier.fillMaxSize().padding(innerPadding).windowInsetsPadding(WindowInsets.navigationBars)) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    item { Spacer(modifier = Modifier.height(4.dp)) }
-                    item {
-                        DeviceStatusBar(
-                            connectionStatus,
-                            deviceInfo,
-                            deviceSession,
-                            onDisconnect = ::disconnectFromDevice,
-                            onConnect = {
-                                deviceSession?.let { connectToDevice(it.device) }
-                                    ?: run { showAddDeviceDialog = true }
-                            },
-                        )
-                    }
-                    item {
-                        TabRow(
-                            tabs = listOf("表盘", "应用", "安装"),
-                            selectedTabIndex = activeTab,
-                            onTabSelected = { activeTab = it },
-                        )
-                    }
-                    item {
-                        when (activeTab) {
-                            0 -> WatchfaceSection(watchfaces, deviceSession, manager, addLog) { watchfaces = it }
-                            1 -> AppSection(apps, deviceSession, manager, addLog) { apps = it }
-                            2 -> InstallSection(deviceSession, manager, context) { msg, type -> addLog(msg, type) }
+                when (selectedNavIndex) {
+                    0 -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            item { Spacer(modifier = Modifier.height(4.dp)) }
+                            item {
+                                DeviceStatusBar(
+                                    connectionStatus,
+                                    deviceInfo,
+                                    deviceSession,
+                                    onDisconnect = ::disconnectFromDevice,
+                                    onConnect = {
+                                        deviceSession?.let { connectToDevice(it.device) }
+                                            ?: run { showAddDeviceDialog = true }
+                                    },
+                                )
+                            }
+                            item {
+                                TabRow(
+                                    tabs = listOf("表盘", "应用", "安装"),
+                                    selectedTabIndex = activeTab,
+                                    onTabSelected = { activeTab = it },
+                                )
+                            }
+                            item {
+                                when (activeTab) {
+                                    0 -> WatchfaceSection(watchfaces, deviceSession, manager, addLog) { newItems ->
+                                        watchfaces.clear(); watchfaces.addAll(newItems)
+                                    }
+                                    1 -> AppSection(apps, deviceSession, manager, addLog) { newItems ->
+                                        apps.clear(); apps.addAll(newItems)
+                                    }
+                                    2 -> InstallSection(deviceSession, manager, context) { msg, type -> addLog(msg, type) }
+                                }
+                            }
+                            if (showLogs) {
+                                item { LogSection(logs) }
+                            }
                         }
                     }
-                    if (showLogs) {
-                        item { LogSection(logs) }
+                    1 -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            item { Spacer(modifier = Modifier.height(4.dp)) }
+                            item {
+                                Text("显示设置", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text("显示操作日志", fontSize = 14.sp)
+                                    Switch(checked = showLogs, onCheckedChange = {
+                                        showLogs = it
+                                        saveShowLogs(context, it)
+                                    })
+                                }
+                            }
+                            item {
+                                SimpleDivider()
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("设备管理", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                addLog("正在导入设备...", LogType.INFO)
+                                                val imported = withContext(IO) {
+                                                    importSavedDevicesFromFile(context)
+                                                }
+                                                if (imported != null) {
+                                                    val existingAddrs = savedDevices.map { it.addr }.toSet()
+                                                    val newDevices = imported.filter { it.addr !in existingAddrs }
+                                                    val skipped = imported.size - newDevices.size
+                                                    savedDevices.addAll(newDevices)
+                                                    saveSavedDevices(context, savedDevices)
+                                                    val msg = buildString {
+                                                        append("成功导入 ${newDevices.size} 个设备")
+                                                        if (skipped > 0) append("，跳过 $skipped 个重复设备")
+                                                    }
+                                                    addLog(msg, LogType.SUCCESS)
+                                                } else {
+                                                    addLog("设备导入失败或已取消", LogType.WARNING)
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text("导入设备")
+                                    }
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                addLog("正在导出设备...", LogType.INFO)
+                                                val success = withContext(IO) {
+                                                    exportSavedDevicesToFile(context, savedDevices)
+                                                }
+                                                if (success) {
+                                                    addLog("设备导出成功", LogType.SUCCESS)
+                                                } else {
+                                                    addLog("设备导出失败或已取消", LogType.WARNING)
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text("导出设备")
+                                    }
+                                }
+                            }
+                            item {
+                                SimpleDivider()
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("关于", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("版本: 1.0.0", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
+                            }
+                        }
                     }
-                    item { Footer() }
                 }
             }
             if (showAddDeviceDialog) {
@@ -322,7 +460,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                     deviceConnectTypeBle, { deviceConnectTypeBle = it },
                     scannedDevices, isScanning,
                     onStartScan = {
-                        scannedDevices = emptyList()
+                        scannedDevices.clear()
                         isScanning = true
                         addLog("开始扫描附近蓝牙设备...", LogType.INFO)
                         var lastCount = 0
@@ -346,7 +484,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             }
                         }
                         scanner.startScan(
-                            onDeviceFound = { dev -> if (scannedDevices.none { it.address == dev.address }) scannedDevices = scannedDevices + dev },
+                            onDeviceFound = { dev -> if (scannedDevices.none { it.address == dev.address }) scannedDevices.add(dev) },
                             onScanComplete = {
                                 if (isScanning) {
                                     isScanning = false
@@ -381,7 +519,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             sarVersion = if (deviceSarVersion == 1) 2 else 1,
                             connectType = if (deviceConnectTypeBle) "BLE" else "SPP",
                         )
-                        savedDevices = savedDevices + dev
+                        savedDevices.add(dev)
                         saveSavedDevices(context, savedDevices)
                         addLog("设备 ${dev.name} 添加成功", LogType.SUCCESS)
                         deviceName = ""
@@ -401,105 +539,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                     },
                 )
             }
-            if (showSettings) {
-                SettingsBottomSheet(
-                    showLogs = showLogs,
-                    onShowLogsChange = {
-                        showLogs = it
-                        saveShowLogs(context, it)
-                    },
-                    onExport = {
-                        scope.launch {
-                            addLog("正在导出设备...", LogType.INFO)
-                            val success = withContext(IO) {
-                                exportSavedDevicesToFile(context, savedDevices)
-                            }
-                            if (success) {
-                                addLog("设备导出成功", LogType.SUCCESS)
-                            } else {
-                                addLog("设备导出失败或已取消", LogType.WARNING)
-                            }
-                        }
-                    },
-                    onImport = {
-                        scope.launch {
-                            addLog("正在导入设备...", LogType.INFO)
-                            val imported = withContext(IO) {
-                                importSavedDevicesFromFile(context)
-                            }
-                            if (imported != null) {
-                                val existingAddrs = savedDevices.map { it.addr }.toSet()
-                                val newDevices = imported.filter { it.addr !in existingAddrs }
-                                val skipped = imported.size - newDevices.size
-                                savedDevices = savedDevices + newDevices
-                                saveSavedDevices(context, savedDevices)
-                                val msg = buildString {
-                                    append("成功导入 ${newDevices.size} 个设备")
-                                    if (skipped > 0) append("，跳过 $skipped 个重复设备")
-                                }
-                                addLog(msg, LogType.SUCCESS)
-                            } else {
-                                addLog("设备导入失败或已取消", LogType.WARNING)
-                            }
-                        }
-                    },
-                    onDismiss = { showSettings = false },
-                )
-            }
         }
-    }
-}
-
-// ─── SettingsBottomSheet ───
-@Composable
-private fun SettingsBottomSheet(
-    showLogs: Boolean,
-    onShowLogsChange: (Boolean) -> Unit,
-    onExport: () -> Unit,
-    onImport: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    OverlayBottomSheet(
-        show = true,
-        title = "设置",
-        onDismissRequest = onDismiss,
-    ) {
-        Text("显示设置", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("显示操作日志", fontSize = 14.sp)
-            Switch(checked = showLogs, onCheckedChange = onShowLogsChange)
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("设备管理", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Button(
-                onClick = onImport,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("导入设备")
-            }
-            Button(
-                onClick = onExport,
-                modifier = Modifier.weight(1f),
-            ) {
-                Text("导出设备")
-            }
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("关于", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text("版本: 1.0.0", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
-        SimpleDivider()
-        Text("Powered by ASTROBOX", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
     }
 }
 
@@ -548,8 +588,6 @@ fun SettingsScreen(onBack: () -> Unit, showLogs: Boolean = true, onShowLogsChang
                         Text("关于", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text("版本: 1.0.0", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
-                        SimpleDivider()
-                        Text("Powered by ASTROBOX", fontSize = 14.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp))
                     }
                 }
             }
@@ -572,7 +610,8 @@ private fun DeviceStatusBar(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Top,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Spacer(modifier = Modifier.weight(2f))
+            Column(modifier = Modifier.weight(3f)) {
                 val title = when (status) {
                     ConnectionStatus.CONNECTED -> session?.device?.name ?: "已连接"
                     ConnectionStatus.CONNECTING -> "正在连接..."
@@ -876,7 +915,7 @@ private fun AppSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("应用列表", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text("应用列表", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 if (isLoading) {
                     InfiniteProgressIndicator(modifier = Modifier.padding(8.dp))
                 } else {
@@ -1064,8 +1103,7 @@ private fun LogSection(logs: List<LogEntry>) {
             Spacer(modifier = Modifier.height(8.dp))
             SimpleDivider()
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(logs.size) { index ->
-                    val entry = logs[index]
+                items(logs, key = { "${it.timestamp}_${it.message.hashCode()}" }) { entry ->
                     val color = when (entry.type) {
                         LogType.SUCCESS -> MiuixTheme.colorScheme.primary
                         LogType.ERROR -> MiuixTheme.colorScheme.error
@@ -1082,13 +1120,5 @@ private fun LogSection(logs: List<LogEntry>) {
                 }
             }
         }
-    }
-}
-
-// ─── Footer ───
-@Composable
-private fun Footer() {
-    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-        Text("Powered by ASTROBOX", fontSize = 12.sp)
     }
 }
