@@ -42,12 +42,13 @@ tasks.register<JavaExec>("buildApks") {
     dependsOn("bundleRelease")
     classpath(bundletoolJar)
     mainClass.set("com.android.tools.build.bundletool.BundleToolMain")
-    args = mutableListOf(
-        "build-apks",
-        "--bundle=${layout.buildDirectory.get().asFile}/outputs/bundle/release/androidApp-release.aab",
-        "--output=${layout.buildDirectory.get().asFile}/outputs/bundle/release/androidApp-release.apks",
-        "--overwrite",
-    )
+    args =
+        mutableListOf(
+            "build-apks",
+            "--bundle=${layout.buildDirectory.get().asFile}/outputs/bundle/release/androidApp-release.aab",
+            "--output=${layout.buildDirectory.get().asFile}/outputs/bundle/release/androidApp-release.apks",
+            "--overwrite",
+        )
 }
 
 tasks.register<JavaExec>("installApks") {
@@ -55,10 +56,11 @@ tasks.register<JavaExec>("installApks") {
     dependsOn("buildApks")
     classpath(bundletoolJar)
     mainClass.set("com.android.tools.build.bundletool.BundleToolMain")
-    args = mutableListOf(
-        "install-apks",
-        "--apks=${layout.buildDirectory.get().asFile}/outputs/bundle/release/androidApp-release.apks",
-    )
+    args =
+        mutableListOf(
+            "install-apks",
+            "--apks=${layout.buildDirectory.get().asFile}/outputs/bundle/release/androidApp-release.apks",
+        )
 }
 
 android {
@@ -96,11 +98,12 @@ val isRelease = gradle.startParameter.taskNames.any { it.contains("Release", ign
 val buildMode = if (isRelease) "release" else "debug"
 
 // 架构映射：abi名称 -> Rust target
-val rustTargets = mapOf(
-    "arm64-v8a" to "aarch64-linux-android",
-    "armeabi-v7a" to "armv7-linux-androideabi",
-    "x86_64" to "x86_64-linux-android",
-)
+val rustTargets =
+    mapOf(
+        "arm64-v8a" to "aarch64-linux-android",
+        "armeabi-v7a" to "armv7-linux-androideabi",
+        "x86_64" to "x86_64-linux-android",
+    )
 
 // NDK strip 工具路径（从环境变量获取）
 val ndkHome = System.getenv("ANDROID_NDK_HOME") ?: "${System.getenv("ANDROID_HOME")}/ndk/${android.ndkVersion}"
@@ -144,7 +147,11 @@ rustTargets.forEach { (abi, rustTarget) ->
         tasks.register<Exec>(stripTaskName) {
             dependsOn(copyTaskName)
             description = "Strip debug symbols from .so for $abi"
-            val soFile = layout.buildDirectory.file("rust-jni/$abi/libastrobox_app_android.so").get().asFile
+            val soFile =
+                layout.buildDirectory
+                    .file("rust-jni/$abi/libastrobox_app_android.so")
+                    .get()
+                    .asFile
             commandLine(stripTool.absolutePath, "--strip-all", soFile.absolutePath)
         }
     }
@@ -152,8 +159,24 @@ rustTargets.forEach { (abi, rustTarget) ->
 
 // 注册 build/rust-jni 为 jniLibs 源目录
 afterEvaluate {
-    android.sourceSets.getByName("release").jniLibs.srcDirs(layout.buildDirectory.dir("rust-jni").get().asFile)
-    android.sourceSets.getByName("debug").jniLibs.srcDirs(layout.buildDirectory.dir("rust-jni").get().asFile)
+    android.sourceSets
+        .getByName("release")
+        .jniLibs
+        .srcDirs(
+            layout.buildDirectory
+                .dir("rust-jni")
+                .get()
+                .asFile,
+        )
+    android.sourceSets
+        .getByName("debug")
+        .jniLibs
+        .srcDirs(
+            layout.buildDirectory
+                .dir("rust-jni")
+                .get()
+                .asFile,
+        )
 }
 
 // 确保 Rust .so 在 mergeJniLibFolders 之前准备好
