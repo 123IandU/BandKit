@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -86,6 +87,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.icon.extended.Edit
 import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Ok
@@ -176,6 +178,15 @@ private fun AppContent(modifier: Modifier = Modifier) {
 
     fun connectToDevice(device: SavedDevice) {
         scope.launch {
+            if (deviceSession != null) {
+                addLog("正在断开当前设备...", LogType.INFO)
+                withContext(IO) { manager.disconnect(deviceSession!!) }
+                deviceSession = null
+                connectionStatus = ConnectionStatus.DISCONNECTED
+                deviceInfo = DeviceInfo()
+                watchfaces.clear()
+                apps.clear()
+            }
             connectionStatus = ConnectionStatus.CONNECTING
             addLog("正在连接 ${device.name}...", LogType.INFO)
             try {
@@ -259,36 +270,11 @@ private fun AppContent(modifier: Modifier = Modifier) {
             topBar = {
                 SmallTopAppBar(
                     title = "BANDKIT",
-                    navigationIcon = {
-                        if (selectedNavIndex == 0) {
-                            val deviceEntries = listOf(
-                                DropdownEntry(
-                                    items = savedDevices.map { device ->
-                                        val isCurrent = deviceSession?.device?.id == device.id
-                                        DropdownItem(
-                                            text = device.name + if (isCurrent) " [当前]" else "",
-                                            summary = "${device.addr} · ${device.connectType}",
-                                            selected = isCurrent,
-                                            onClick = { connectToDevice(device) },
-                                        )
-                                    },
-                                ),
-                            )
-                            OverlayIconCascadingDropdownMenu(
-                                entry = deviceEntries.firstOrNull() ?: DropdownEntry(items = emptyList()),
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Link,
-                                    contentDescription = "设备列表",
-                                )
-                            }
-                        }
-                    },
                     actions = {
                         if (selectedNavIndex == 0) {
                             IconButton(onClick = { showAddDeviceDialog = true }) {
                                 Icon(
-                                    imageVector = MiuixIcons.Add,
+                                    imageVector = MiuixIcons.Link,
                                     contentDescription = "添加设备",
                                 )
                             }
@@ -326,11 +312,6 @@ private fun AppContent(modifier: Modifier = Modifier) {
                                     connectionStatus,
                                     deviceInfo,
                                     deviceSession,
-                                    onDisconnect = ::disconnectFromDevice,
-                                    onConnect = {
-                                        deviceSession?.let { connectToDevice(it.device) }
-                                            ?: run { showAddDeviceDialog = true }
-                                    },
                                 )
                             }
                             item {
@@ -446,7 +427,29 @@ private fun AppContent(modifier: Modifier = Modifier) {
             }
             if (showAddDeviceDialog) {
                 AddDeviceBottomSheet(
-                    deviceFormTab, {
+                    savedDevices = savedDevices,
+                    currentSession = deviceSession,
+                    onConnect = { device ->
+                        showAddDeviceDialog = false
+                        connectToDevice(device)
+                    },
+                    onEdit = { device ->
+                        deviceName = device.name
+                        deviceAddr = device.addr
+                        deviceAuthkey = device.authkey
+                        deviceSarVersion = if (device.sarVersion == 2) 1 else 0
+                        deviceConnectTypeBle = device.connectType == "BLE"
+                        savedDevices.remove(device)
+                        saveSavedDevices(context, savedDevices)
+                        deviceFormTab = 0
+                    },
+                    onDelete = { device ->
+                        if (deviceSession?.device?.id == device.id) disconnectFromDevice()
+                        savedDevices.remove(device)
+                        saveSavedDevices(context, savedDevices)
+                        addLog("${device.name} 已删除", LogType.SUCCESS)
+                    },
+                    tab = deviceFormTab, onTabChange = {
                         if (deviceFormTab == 1 && it != 1 && isScanning) {
                             scanner.stopScan()
                             isScanning = false
@@ -601,8 +604,6 @@ private fun DeviceStatusBar(
     status: ConnectionStatus,
     info: DeviceInfo,
     session: com.bandkit.app.models.DeviceSession?,
-    onDisconnect: () -> Unit,
-    onConnect: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -639,23 +640,6 @@ private fun DeviceStatusBar(
                     Text("${info.usedStorage} / ${info.totalStorage}", fontSize = 12.sp)
                 }
             }
-            if (status == ConnectionStatus.CONNECTED) {
-                Button(
-                    onClick = onDisconnect,
-                    colors = ButtonDefaults.buttonColors(
-                        color = MiuixTheme.colorScheme.error,
-                    ),
-                ) {
-                    Text("断开连接")
-                }
-            } else {
-                Button(
-                    onClick = onConnect,
-                    colors = ButtonDefaults.buttonColorsPrimary(),
-                ) {
-                    Text("连接设备")
-                }
-            }
         }
     }
 }
@@ -663,6 +647,11 @@ private fun DeviceStatusBar(
 // ─── AddDeviceBottomSheet ───
 @Composable
 private fun AddDeviceBottomSheet(
+    savedDevices: List<SavedDevice>,
+    currentSession: com.bandkit.app.models.DeviceSession?,
+    onConnect: (SavedDevice) -> Unit,
+    onEdit: (SavedDevice) -> Unit,
+    onDelete: (SavedDevice) -> Unit,
     tab: Int,
     onTabChange: (Int) -> Unit,
     name: String,
@@ -685,9 +674,53 @@ private fun AddDeviceBottomSheet(
 ) {
     OverlayBottomSheet(
         show = true,
-        title = "添加新设备",
+        title = "设备管理",
         onDismissRequest = onDismiss,
     ) {
+        if (savedDevices.isNotEmpty()) {
+            Text("已保存设备", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(modifier = Modifier.fillMaxWidth().height(160.dp)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    items(savedDevices) { device ->
+                        val isCurrent = currentSession?.device?.id == device.id
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .clickable { onConnect(device) }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    device.name + if (isCurrent) " [当前]" else "",
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                )
+                                Text("${device.addr} · ${device.connectType}", fontSize = 12.sp)
+                            }
+                            IconButton(onClick = { onEdit(device) }) {
+                                Icon(imageVector = MiuixIcons.Edit, contentDescription = "编辑", modifier = Modifier.size(20.dp))
+                            }
+                            IconButton(onClick = { onDelete(device) }) {
+                                Icon(
+                                    imageVector = MiuixIcons.Delete,
+                                    contentDescription = "删除",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MiuixTheme.colorScheme.error,
+                                )
+                            }
+                        }
+                        SimpleDivider()
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+        Text("添加新设备", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
         TabRowWithContour(
             tabs = listOf("直接添加", "扫描附近设备"),
             selectedTabIndex = tab,
@@ -845,51 +878,56 @@ private fun WatchfaceSection(
                     Text("未连接到设备或没有表盘数据", fontSize = 14.sp)
                 }
             } else {
-                watchfaces.forEachIndexed { index, wf ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(wf.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text("ID: ${wf.id}", fontSize = 12.sp)
-                        }
-                        if (wf.isCurrent) {
-                            Text("当前", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary)
-                        } else {
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                IconButton(
-                                    onClick = {
-                                        val s = session ?: return@IconButton
-                                        scope.launch {
-                                            withContext(IO) { manager.setWatchface(s, wf.id) }
-                                            onUpdate(watchfaces.map { it.copy(isCurrent = it.id == wf.id) })
-                                        }
-                                    },
-                                ) {
-                                    Icon(imageVector = MiuixIcons.Ok, contentDescription = "设为当前")
+                Box(modifier = Modifier.fillMaxWidth().height(240.dp)) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(watchfaces.size) { index ->
+                            val wf = watchfaces[index]
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(wf.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("ID: ${wf.id}", fontSize = 12.sp)
                                 }
-                                IconButton(
-                                    onClick = {
-                                        val s = session ?: return@IconButton
-                                        scope.launch {
-                                            withContext(IO) { manager.uninstallWatchface(s, wf.id) }
-                                            onUpdate(watchfaces.filter { it.id != wf.id })
+                                if (wf.isCurrent) {
+                                    Text("当前", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary)
+                                } else {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        IconButton(
+                                            onClick = {
+                                                val s = session ?: return@IconButton
+                                                scope.launch {
+                                                    withContext(IO) { manager.setWatchface(s, wf.id) }
+                                                    onUpdate(watchfaces.map { it.copy(isCurrent = it.id == wf.id) })
+                                                }
+                                            },
+                                        ) {
+                                            Icon(imageVector = MiuixIcons.Ok, contentDescription = "设为当前")
                                         }
-                                    },
-                                ) {
-                                    Icon(
-                                        imageVector = MiuixIcons.Delete,
-                                        contentDescription = "卸载",
-                                        tint = MiuixTheme.colorScheme.error,
-                                    )
+                                        IconButton(
+                                            onClick = {
+                                                val s = session ?: return@IconButton
+                                                scope.launch {
+                                                    withContext(IO) { manager.uninstallWatchface(s, wf.id) }
+                                                    onUpdate(watchfaces.filter { it.id != wf.id })
+                                                }
+                                            },
+                                        ) {
+                                            Icon(
+                                                imageVector = MiuixIcons.Delete,
+                                                contentDescription = "卸载",
+                                                tint = MiuixTheme.colorScheme.error,
+                                            )
+                                        }
+                                    }
                                 }
                             }
+                            if (index < watchfaces.lastIndex) {
+                                SimpleDivider()
+                            }
                         }
-                    }
-                    if (index < watchfaces.lastIndex) {
-                        SimpleDivider()
                     }
                 }
             }
@@ -915,7 +953,7 @@ private fun AppSection(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("应用列表", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text("应用列表", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 if (isLoading) {
                     InfiniteProgressIndicator(modifier = Modifier.padding(8.dp))
                 } else {
@@ -949,44 +987,49 @@ private fun AppSection(
                     Text("未连接到设备或没有应用数据", fontSize = 14.sp)
                 }
             } else {
-                apps.forEachIndexed { index, app ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(app.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                            Text(app.packageName, fontSize = 12.sp)
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            IconButton(
-                                onClick = {
-                                    val s = session ?: return@IconButton
-                                    scope.launch { withContext(IO) { manager.launchApp(s, app.packageName) } }
-                                },
+                Box(modifier = Modifier.fillMaxWidth().height(240.dp)) {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(apps.size) { index ->
+                            val app = apps[index]
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Icon(imageVector = MiuixIcons.Play, contentDescription = "启动")
-                            }
-                            IconButton(
-                                onClick = {
-                                    val s = session ?: return@IconButton
-                                    scope.launch {
-                                        withContext(IO) { manager.uninstallApp(s, app.packageName) }
-                                        onUpdate(apps.filter { it.packageName != app.packageName })
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(app.name, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text(app.packageName, fontSize = 12.sp)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    IconButton(
+                                        onClick = {
+                                            val s = session ?: return@IconButton
+                                            scope.launch { withContext(IO) { manager.launchApp(s, app.packageName) } }
+                                        },
+                                    ) {
+                                        Icon(imageVector = MiuixIcons.Play, contentDescription = "启动")
                                     }
-                                },
-                            ) {
-                                Icon(
-                                    imageVector = MiuixIcons.Delete,
-                                    contentDescription = "删除",
-                                    tint = MiuixTheme.colorScheme.error,
-                                )
+                                    IconButton(
+                                        onClick = {
+                                            val s = session ?: return@IconButton
+                                            scope.launch {
+                                                withContext(IO) { manager.uninstallApp(s, app.packageName) }
+                                                onUpdate(apps.filter { it.packageName != app.packageName })
+                                            }
+                                        },
+                                    ) {
+                                        Icon(
+                                            imageVector = MiuixIcons.Delete,
+                                            contentDescription = "删除",
+                                            tint = MiuixTheme.colorScheme.error,
+                                        )
+                                    }
+                                }
+                            }
+                            if (index < apps.lastIndex) {
+                                SimpleDivider()
                             }
                         }
-                    }
-                    if (index < apps.lastIndex) {
-                        SimpleDivider()
                     }
                 }
             }
