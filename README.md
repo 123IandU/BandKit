@@ -21,3 +21,14 @@
 ```bash
 ./gradlew :androidApp:assembleDebug
 ```
+
+## 开源许可
+
+本项目基于 **GNU Affero General Public License v3.0 (AGPL-3.0)** 授权发布。
+
+本软件使用了以下开源项目：
+
+- **[AstroBox-NG](https://github.com/AstralSightStudios/AstroBox-NG)** — AGPL-3.0 with additional attribution, Copyright (C) 2025 AstralSight Studios
+- **[compose-miuix-ui (Miuix)](https://github.com/compose-miuix-ui/miuix)** — Apache License 2.0
+
+详情见 [LICENSE](LICENSE) 和 [NOTICE.md](NOTICE.md)。
