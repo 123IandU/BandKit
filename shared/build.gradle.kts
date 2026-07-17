@@ -23,7 +23,7 @@ kotlin {
                 }
         }
         minSdk = BuildConfig.MIN_SDK
-        namespace = "com.miband.app.shared"
+        namespace = "com.bandkit.app.shared"
     }
 
     jvm("desktop")

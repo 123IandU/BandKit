@@ -33,3 +33,9 @@ androidApp/.cxx/
 *.dex
 *.so
 !gradle/wrapper/gradle-wrapper.jar
+
+# IDE META-INF
+META-INF/
+
+# Bundletool
+tools/
