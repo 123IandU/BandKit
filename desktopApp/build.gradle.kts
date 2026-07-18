@@ -28,7 +28,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Exe, TargetFormat.Msi)
             packageName = "BandKit"
-            packageVersion = "1.0.0"
+            packageVersion = BuildConfig.VERSION_NAME
             vendor = "Example"
         }
     }

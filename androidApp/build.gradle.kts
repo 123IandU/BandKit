@@ -76,8 +76,8 @@ android {
         applicationId = BuildConfig.APPLICATION_ID
         minSdk = BuildConfig.MIN_SDK
         targetSdk = BuildConfig.TARGET_SDK
-        versionName = "1.0.0"
-        versionCode = 1
+        versionName = BuildConfig.VERSION_NAME
+        versionCode = BuildConfig.VERSION_CODE
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
