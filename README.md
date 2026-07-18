@@ -2,24 +2,34 @@
 
 基于 Kotlin Multiplatform Compose + Rust JNI 的小米/华米智能手环管理工具。
 
+## 下载
+
+从 [Releases](https://github.com/123IandU/BandKit/releases) 页面下载最新版本。
+
 ## 功能
 
-- 蓝牙扫描与连接（SPP 协议）
+- 蓝牙扫描与连接（SPP / BLE）
 - 设备信息读取（型号、固件版本、电量、存储）
-- 表盘管理（列表、设置、卸载）
-- 第三方应用管理（列表、启动、卸载、安装 RPK）
-- 原生层协议处理，认证加密
+- 表盘管理（列表、设置当前表盘、卸载）
+- 第三方应用管理（列表、启动、卸载）
+- 文件安装（RPK 应用、BIN 固件）
+- 设备导入/导出（JSON 格式）
+- 已保存设备管理（点击设备名称快速切换）
 
 ## 技术栈
 
-- **前端**: Kotlin Multiplatform Compose (Miuix UI)
-- **后端协议**: Rust + JNI (libbandkit_app_android.so)
-- **平台**: Android (targetSdk 37)
+- **UI**: Kotlin Multiplatform Compose (Miuix UI)
+- **协议层**: Rust + JNI (libbandkit_app_android.so)
+- **平台**: Android (minSdk 23, targetSdk 37), Desktop (JVM), Web (WasmJS)
 
 ## 构建
 
 ```bash
+# Android
 ./gradlew :androidApp:assembleDebug
+
+# Desktop
+./gradlew :desktopApp:run
 ```
 
 ## 开源许可
