@@ -42,6 +42,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(compose.uiTooling)
+            implementation("scripta:editor")
         }
         val desktopMain by getting
         desktopMain.dependencies {

@@ -19,6 +19,8 @@ pluginManagement {
     }
 }
 
+includeBuild("third_party/scripta")
+
 dependencyResolutionManagement {
     repositories {
         google {

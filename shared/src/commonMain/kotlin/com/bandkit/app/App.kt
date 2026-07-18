@@ -294,13 +294,19 @@ private fun AppContent(modifier: Modifier = Modifier) {
                     NavigationBarItem(
                         selected = selectedNavIndex == 1,
                         onClick = { selectedNavIndex = 1 },
+                        icon = MiuixIcons.Play,
+                        label = "脚本",
+                    )
+                    NavigationBarItem(
+                        selected = selectedNavIndex == 2,
+                        onClick = { selectedNavIndex = 2 },
                         icon = MiuixIcons.Settings,
                         label = "设置",
                     )
                 }
             },
         ) { innerPadding ->
-            Column(modifier = Modifier.fillMaxSize().padding(innerPadding).windowInsetsPadding(WindowInsets.navigationBars)) {
+            Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
                 when (selectedNavIndex) {
                     0 -> {
                         LazyColumn(
@@ -345,6 +351,10 @@ private fun AppContent(modifier: Modifier = Modifier) {
                     }
 
                     1 -> {
+                        PlatformScriptScreen(session = deviceSession)
+                    }
+
+                    2 -> {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                         ) {
