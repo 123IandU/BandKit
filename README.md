@@ -20,16 +20,12 @@
 
 - **UI**: Kotlin Multiplatform Compose (Miuix UI)
 - **协议层**: Rust + JNI (libbandkit_app_android.so)
-- **平台**: Android (minSdk 23, targetSdk 37), Desktop (JVM), Web (WasmJS)
+- **平台**: Android (minSdk 23, targetSdk 37)
 
 ## 构建
 
 ```bash
-# Android
 ./gradlew :androidApp:assembleDebug
-
-# Desktop
-./gradlew :desktopApp:run
 ```
 
 ## 开源许可
