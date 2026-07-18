@@ -3,13 +3,14 @@
 package com.bandkit.app
 
 import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -57,9 +58,25 @@ data class ConsoleEntry(
     val timestamp: Long = currentTimeMillis(),
 )
 
+private fun jsonEscape(s: String): String {
+    val escaped = s.replace("\\", "\\\\")
+        .replace("'", "\\'")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    return "'$escaped'"
+}
+
+private fun jsonEscapeHtml(s: String): String = s.replace("&", "&amp;")
+    .replace("<", "&lt;")
+    .replace(">", "&gt;")
+    .replace("\"", "&quot;")
+    .replace("'", "&#39;")
+
 /**
- * 与 bandburg 完全兼容的 sandbox JS 桥接代码。
- * register_event_sink 和 gui 在 JS 侧完整实现（无需 Java 桥接回调）。
+ * 与 bandburg 兼容的 sandbox JS 桥接代码。
+ * 所有 GUI 渲染在同一个 WebView 的 DOM 中完成（与 bandburg 一致），
+ * 不需要跨 WebView 通信。
  */
 private fun buildJsBridge(deviceName: String, deviceAddr: String, authKey: String): String = """
 // ===== 全局配置 =====
@@ -81,8 +98,6 @@ function _error() {
     var args = Array.prototype.slice.call(arguments).join(' ');
     ScriptBridge.error(String(args));
 }
-
-// 覆盖 console.log 以捕获所有日志
 console.log = _log;
 console.warn = _warn;
 console.error = _error;
@@ -106,69 +121,283 @@ var sandbox = {
         bytesToHex: function(b) { return ScriptBridge.bytesToHex(String(b)); }
     },
     wasm: {
-        miwear_connect: function(addr, authkey) { return ScriptBridge.deviceConnect(String(addr), String(authkey||'')); },
-        miwear_disconnect: function(addr) { return ScriptBridge.deviceDisconnect(String(addr)); },
-        miwear_get_connected_devices: function() { return _deviceAddr ? [{name:_deviceName,addr:_deviceAddr}] : []; },
-        miwear_get_data: function(addr, type) { return ScriptBridge.getDeviceData(String(type)); },
+        miwear_connect: function(addr, authkey) {
+            return ScriptBridge.deviceConnect(String(addr), String(authkey||''));
+        },
+        miwear_disconnect: function(addr) {
+            return ScriptBridge.deviceDisconnect(String(addr));
+        },
+        miwear_get_connected_devices: function() {
+            return _deviceAddr ? [{name:_deviceName,addr:_deviceAddr}] : [];
+        },
+        miwear_get_data: function(addr, type) {
+            return ScriptBridge.getDeviceData(String(type));
+        },
         miwear_get_file_type: function(addr, path) { return ''; },
         miwear_install: function(addr, data) { return false; },
-        thirdpartyapp_get_list: function(addr) { try { return JSON.parse(ScriptBridge.getAppList()); } catch(e) { return []; } },
-        thirdpartyapp_launch: function(addr, pkg, msg) { return ScriptBridge.launchApp(String(pkg)); },
-        thirdpartyapp_send_message: function(addr, pkg, data) { return ScriptBridge.sendMessage(String(pkg), String(data)); },
-        thirdpartyapp_uninstall: function(addr, pkg) { return ScriptBridge.uninstallApp(String(pkg)); },
-        watchface_get_list: function(addr) { try { return JSON.parse(ScriptBridge.getWatchfaceList()); } catch(e) { return []; } },
-        watchface_set_current: function(addr, id) { return ScriptBridge.setWatchface(String(id)); },
-        watchface_uninstall: function(addr, id) { return ScriptBridge.uninstallWatchface(String(id)); },
+        thirdpartyapp_get_list: function(addr) {
+            try { return JSON.parse(ScriptBridge.getAppList()); } catch(e) { return []; }
+        },
+        thirdpartyapp_launch: function(addr, pkg, msg) {
+            return ScriptBridge.launchApp(String(pkg));
+        },
+        thirdpartyapp_send_message: function(addr, pkg, data) {
+            return ScriptBridge.sendMessage(String(pkg), String(data));
+        },
+        thirdpartyapp_uninstall: function(addr, pkg) {
+            return ScriptBridge.uninstallApp(String(pkg));
+        },
+        watchface_get_list: function(addr) {
+            try { return JSON.parse(ScriptBridge.getWatchfaceList()); } catch(e) { return []; }
+        },
+        watchface_set_current: function(addr, id) {
+            return ScriptBridge.setWatchface(String(id));
+        },
+        watchface_uninstall: function(addr, id) {
+            return ScriptBridge.uninstallWatchface(String(id));
+        },
         register_event_sink: function(cb) {
             if (typeof cb === 'function') {
                 _eventSinks.push(cb);
                 _log('[事件] 事件监听器已注册');
             }
+            return true;
         }
     },
     gui: function(config) {
+        // 关闭之前创建的 GUI
+        if (_activeGUI) {
+            try { _activeGUI.close(); } catch(e) {}
+            _activeGUI = null;
+        }
+
         _log('[GUI] 创建界面: ' + (config.title || ''));
-        // 返回一个虚拟控制器，所有操作映射到控制台日志
-        var controller = {
-            _id: 'gui_' + Date.now(),
-            _elements: config.elements || [],
-            _listeners: {},
-            getValues: function() {
-                var vals = {};
-                if (this._elements) {
-                    for (var i = 0; i < this._elements.length; i++) {
-                        var el = this._elements[i];
-                        if (el.id) vals[el.id] = el.value || '';
-                    }
-                }
-                return vals;
-            },
-            getValue: function(id) { return this.getValues()[id] || null; },
-            setValue: function(id, val) {
-                if (this._elements) {
-                    for (var i = 0; i < this._elements.length; i++) {
-                        if (this._elements[i].id === id) { this._elements[i].value = val; break; }
-                    }
-                }
-            },
-            on: function(event, id, cb) {
-                var key = event + ':' + id;
-                if (!this._listeners[key]) this._listeners[key] = [];
-                this._listeners[key].push(cb);
-                _log('[GUI] 绑定事件 ' + key);
-            },
-            close: function() { _log('[GUI] 窗口关闭'); },
-            show: function() { _log('[GUI] 窗口显示'); },
-            hide: function() { _log('[GUI] 窗口隐藏'); }
+
+        // 直接替换 body 内容渲染 GUI（Android WebView 不支持 position:fixed）
+        document.body.style.cssText = 'margin:0;padding:12px;background:#1e1e1e;color:#e0e0e0;font-family:system-ui,sans-serif;font-size:14px;overflow-y:auto;';
+        document.body.innerHTML = '';
+
+        // 标题栏
+        var titleBar = document.createElement('div');
+        titleBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;';
+        var title = document.createElement('h3');
+        title.textContent = config.title || 'GUI';
+        title.style.cssText = 'color:#e0e0e0;margin:0;font-size:16px;';
+        titleBar.appendChild(title);
+        var closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '&times;';
+        closeBtn.style.cssText = 'background:none;border:none;color:#aaa;font-size:24px;cursor:pointer;padding:0 4px;';
+        closeBtn.onclick = function() { controller.close(); };
+        titleBar.appendChild(closeBtn);
+        document.body.appendChild(titleBar);
+
+        // 元素容器
+        var container = document.createElement('div');
+        document.body.appendChild(container);
+
+        // 存储
+        var elements = {};
+        var values = {};
+        var eventListeners = {
+            'button:click': {},
+            'input:change': {},
+            'file:change': {}
         };
+
+        // 创建表单元素（与 bandburg 一致）
+        (config.elements || []).forEach(function(element, index) {
+            var elementId = element.id || 'element_' + index;
+
+            switch (element.type) {
+                case 'label':
+                    if (!element.text) break;
+                    var label = document.createElement('div');
+                    label.id = elementId;
+                    label.textContent = element.text;
+                    label.style.cssText = 'padding:8px;border:1px solid #555;border-radius:8px;margin-bottom:8px;color:#e0e0e0;' + (element.style || '');
+                    container.appendChild(label);
+                    elements[elementId] = label;
+                    values[elementId] = element.text;
+                    break;
+
+                case 'input':
+                    if (element.label) {
+                        var inputLabel = document.createElement('label');
+                        inputLabel.textContent = element.label;
+                        inputLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:#aaa;font-size:13px;';
+                        container.appendChild(inputLabel);
+                    }
+                    var input = document.createElement('input');
+                    input.type = 'text';
+                    input.id = elementId;
+                    input.placeholder = element.placeholder || '';
+                    input.value = element.value || '';
+                    input.style.cssText = 'width:100%;padding:8px;border:1px solid #555;border-radius:6px;background:#1e1e1e;color:#e0e0e0;font-size:14px;box-sizing:border-box;margin-bottom:8px;';
+                    input.addEventListener('change', function() {
+                        values[elementId] = input.value;
+                        var listeners = eventListeners['input:change'][elementId];
+                        if (listeners) listeners.forEach(function(cb) { cb(input.value); });
+                    });
+                    container.appendChild(input);
+                    elements[elementId] = input;
+                    values[elementId] = input.value;
+                    break;
+
+                case 'textarea':
+                    if (element.label) {
+                        var taLabel = document.createElement('label');
+                        taLabel.textContent = element.label;
+                        taLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:#aaa;font-size:13px;';
+                        container.appendChild(taLabel);
+                    }
+                    var textarea = document.createElement('textarea');
+                    textarea.id = elementId;
+                    textarea.placeholder = element.placeholder || '';
+                    textarea.value = element.value || '';
+                    textarea.style.cssText = 'width:100%;padding:8px;border:1px solid #555;border-radius:6px;background:#1e1e1e;color:#e0e0e0;font-size:14px;min-height:60px;resize:vertical;box-sizing:border-box;margin-bottom:8px;';
+                    textarea.addEventListener('change', function() {
+                        values[elementId] = textarea.value;
+                        var listeners = eventListeners['input:change'][elementId];
+                        if (listeners) listeners.forEach(function(cb) { cb(textarea.value); });
+                    });
+                    container.appendChild(textarea);
+                    elements[elementId] = textarea;
+                    values[elementId] = textarea.value;
+                    break;
+
+                case 'select':
+                    if (element.label) {
+                        var sLabel = document.createElement('label');
+                        sLabel.textContent = element.label;
+                        sLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:#aaa;font-size:13px;';
+                        container.appendChild(sLabel);
+                    }
+                    var select = document.createElement('select');
+                    select.id = elementId;
+                    select.style.cssText = 'width:100%;padding:8px;border:1px solid #555;border-radius:6px;background:#1e1e1e;color:#e0e0e0;font-size:14px;box-sizing:border-box;margin-bottom:8px;';
+                    (element.options || []).forEach(function(opt) {
+                        var optionEl = document.createElement('option');
+                        optionEl.value = opt.value;
+                        optionEl.textContent = opt.label || opt.value;
+                        if (opt.selected) optionEl.selected = true;
+                        select.appendChild(optionEl);
+                    });
+                    select.addEventListener('change', function() {
+                        values[elementId] = select.value;
+                        var listeners = eventListeners['input:change'][elementId];
+                        if (listeners) listeners.forEach(function(cb) { cb(select.value); });
+                    });
+                    container.appendChild(select);
+                    elements[elementId] = select;
+                    values[elementId] = select.value;
+                    break;
+
+                case 'button':
+                    var button = document.createElement('button');
+                    button.textContent = element.text || '按钮';
+                    button.id = elementId;
+                    button.style.cssText = 'width:100%;padding:10px;border:none;border-radius:8px;background:#4a9eff;color:#fff;font-size:14px;cursor:pointer;margin-bottom:8px;';
+                    button.addEventListener('click', function() {
+                        var listeners = eventListeners['button:click'][elementId];
+                        if (listeners) listeners.forEach(function(cb) { cb(); });
+                    });
+                    button.addEventListener('mousedown', function() { button.style.opacity = '0.7'; });
+                    button.addEventListener('mouseup', function() { button.style.opacity = '1'; });
+                    container.appendChild(button);
+                    elements[elementId] = button;
+                    break;
+
+                case 'file':
+                    if (element.label) {
+                        var fLabel = document.createElement('label');
+                        fLabel.textContent = element.label;
+                        fLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:#aaa;font-size:13px;';
+                        container.appendChild(fLabel);
+                    }
+                    var fileInput = document.createElement('input');
+                    fileInput.type = 'file';
+                    fileInput.id = elementId;
+                    if (element.accept) fileInput.accept = element.accept;
+                    fileInput.style.cssText = 'width:100%;padding:8px;border:1px solid #555;border-radius:6px;background:#1e1e1e;color:#e0e0e0;font-size:14px;box-sizing:border-box;margin-bottom:8px;';
+                    fileInput.addEventListener('change', function(e) {
+                        var file = e.target.files && e.target.files[0];
+                        if (file) {
+                            var reader = new FileReader();
+                            reader.onload = function(event) {
+                                var arrayBuffer = event.target.result;
+                                var bytes = new Uint8Array(arrayBuffer);
+                                var binary = '';
+                                for (var i = 0; i < bytes.length; i++) {
+                                    binary += String.fromCharCode(bytes[i]);
+                                }
+                                var base64Data = btoa(binary);
+                                values[elementId] = {
+                                    name: file.name,
+                                    type: file.type,
+                                    size: file.size,
+                                    data: base64Data
+                                };
+                                var infoEl = document.getElementById('__file_info_' + elementId + '__');
+                                if (infoEl) infoEl.textContent = file.name + ' (' + (file.size > 1024 ? Math.round(file.size/1024) + 'KB' : file.size + 'B') + ')';
+                                var listeners = eventListeners['file:change'][elementId];
+                                if (listeners) listeners.forEach(function(cb) { cb(values[elementId]); });
+                            };
+                            reader.readAsArrayBuffer(file);
+                        }
+                    });
+                    container.appendChild(fileInput);
+                    var fileInfo = document.createElement('div');
+                    fileInfo.id = '__file_info_' + elementId + '__';
+                    fileInfo.style.cssText = 'color:#888;font-size:12px;margin-bottom:8px;';
+                    fileInfo.textContent = element.value || '未选择文件';
+                    container.appendChild(fileInfo);
+                    elements[elementId] = fileInput;
+                    break;
+            }
+        });
+
+        // GUI 控制器（与 bandburg 完全一致）
+        var controller = {
+            getValues: function() {
+                var copy = {};
+                for (var k in values) copy[k] = values[k];
+                return copy;
+            },
+            getValue: function(id) { return values[id]; },
+            setValue: function(id, value) {
+                if (elements[id]) {
+                    if (elements[id].tagName === 'DIV') {
+                        elements[id].textContent = value;
+                    } else if (elements[id].type !== 'file') {
+                        elements[id].value = value;
+                    }
+                }
+                values[id] = value;
+            },
+            on: function(event, id, callback) {
+                if (!eventListeners[event]) eventListeners[event] = {};
+                if (!eventListeners[event][id]) eventListeners[event][id] = [];
+                eventListeners[event][id].push(callback);
+                _log('[GUI] 绑定事件 ' + event + ':' + id);
+            },
+            close: function() {
+                document.body.innerHTML = '';
+                document.body.style.cssText = 'margin:0;padding:0;background:#1e1e1e;';
+                if (sandbox.activeGUI === controller) sandbox.activeGUI = null;
+                if (_activeGUI === controller) _activeGUI = null;
+                _log('[GUI] 窗口关闭');
+            },
+            show: function() { document.body.style.display = 'block'; },
+            hide: function() { document.body.style.display = 'none'; }
+        };
+
         sandbox.activeGUI = controller;
         _activeGUI = controller;
-        // 打印 GUI 元素便于调试
-        if (config.elements) {
-            config.elements.forEach(function(el) {
-                _log('[GUI] 元素: ' + el.type + (el.id ? ' id=' + el.id : '') + (el.label ? ' label=' + el.label : ''));
-            });
-        }
+
+        (config.elements || []).forEach(function(el) {
+            _log('[GUI] 元素: ' + el.type + (el.id ? ' id=' + el.id : '') + (el.label ? ' label=' + el.label : ''));
+        });
+
         return controller;
     },
     storage: {
@@ -178,41 +407,37 @@ var sandbox = {
         clear: function() { ScriptBridge.storageClear(); }
     }
 };
-var bandkit = sandbox; // 旧版兼容
+var bandkit = sandbox;
 """.trimIndent()
 
-private fun jsonEscape(s: String): String {
-    val escaped = s.replace("\\", "\\\\")
-        .replace("'", "\\'")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
-    return "'$escaped'"
-}
-
 /**
- * Android → JS 桥接类，所有通过 @JavascriptInterface 暴露的方法
- * 都会被 WebView 的 JS 环境直接调用。
+ * Android → JS 桥接类。
+ *
+ * 所有 @JavascriptInterface 方法在 WebView 后台线程执行，
+ * 通过 mainHandler.post {} 确保 Compose 状态修改在主线程。
  */
 class ScriptBridge(
     private val session: () -> DeviceSession?,
-    val onConsole: (String, String) -> Unit,
+    private val onConsole: (String, String) -> Unit,
+    private val onShowGui: () -> Unit = {},
 ) {
-    @JavascriptInterface
-    fun log(message: String) = onConsole(message, "log")
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     @JavascriptInterface
-    fun warn(message: String) = onConsole(message, "warn")
+    fun log(message: String) = mainHandler.post { onConsole(message, "log") }
 
     @JavascriptInterface
-    fun error(message: String) = onConsole(message, "error")
+    fun warn(message: String) = mainHandler.post { onConsole(message, "warn") }
+
+    @JavascriptInterface
+    fun error(message: String) = mainHandler.post { onConsole(message, "error") }
 
     @JavascriptInterface
     fun deviceConnect(addr: String, authkey: String): Boolean = try {
         NativeDevice.deviceConnect("", addr, authkey, 2, "SPP", ByteArray(0))
         true
     } catch (e: Exception) {
-        onConsole("connect failed: ${e.message}", "error")
+        mainHandler.post { onConsole("connect failed: ${e.message}", "error") }
         false
     }
 
@@ -221,7 +446,7 @@ class ScriptBridge(
         NativeDevice.deviceDisconnect(addr)
         true
     } catch (e: Exception) {
-        onConsole("disconnect failed: ${e.message}", "error")
+        mainHandler.post { onConsole("disconnect failed: ${e.message}", "error") }
         false
     }
 
@@ -230,7 +455,7 @@ class ScriptBridge(
         val s = session() ?: return "[]"
         NativeDevice.watchfaceGetList(s.device.addr)
     }.getOrElse {
-        onConsole("getWatchfaceList: ${it.message}", "error")
+        mainHandler.post { onConsole("getWatchfaceList: ${it.message}", "error") }
         "[]"
     }
 
@@ -239,7 +464,7 @@ class ScriptBridge(
         val s = session() ?: return false
         NativeDevice.watchfaceSetCurrent(s.device.addr, watchfaceId)
     }.getOrElse {
-        onConsole("setWatchface: ${it.message}", "error")
+        mainHandler.post { onConsole("setWatchface: ${it.message}", "error") }
         false
     }
 
@@ -248,7 +473,7 @@ class ScriptBridge(
         val s = session() ?: return false
         NativeDevice.watchfaceUninstall(s.device.addr, watchfaceId)
     }.getOrElse {
-        onConsole("uninstallWatchface: ${it.message}", "error")
+        mainHandler.post { onConsole("uninstallWatchface: ${it.message}", "error") }
         false
     }
 
@@ -257,7 +482,7 @@ class ScriptBridge(
         val s = session() ?: return "[]"
         NativeDevice.thirdpartyappGetList(s.device.addr)
     }.getOrElse {
-        onConsole("getAppList: ${it.message}", "error")
+        mainHandler.post { onConsole("getAppList: ${it.message}", "error") }
         "[]"
     }
 
@@ -266,7 +491,7 @@ class ScriptBridge(
         val s = session() ?: return false
         NativeDevice.thirdpartyappLaunch(s.device.addr, packageName, "")
     }.getOrElse {
-        onConsole("launchApp: ${it.message}", "error")
+        mainHandler.post { onConsole("launchApp: ${it.message}", "error") }
         false
     }
 
@@ -275,7 +500,7 @@ class ScriptBridge(
         val s = session() ?: return false
         NativeDevice.thirdpartyappSendMessage(s.device.addr, packageName, data)
     }.getOrElse {
-        onConsole("sendMessage: ${it.message}", "error")
+        mainHandler.post { onConsole("sendMessage: ${it.message}", "error") }
         false
     }
 
@@ -284,7 +509,7 @@ class ScriptBridge(
         val s = session() ?: return false
         NativeDevice.thirdpartyappUninstall(s.device.addr, packageName)
     }.getOrElse {
-        onConsole("uninstallApp: ${it.message}", "error")
+        mainHandler.post { onConsole("uninstallApp: ${it.message}", "error") }
         false
     }
 
@@ -293,7 +518,7 @@ class ScriptBridge(
         val s = session() ?: return "{}"
         NativeDevice.deviceGetData(s.device.addr, dataType)
     }.getOrElse {
-        onConsole("getDeviceData: ${it.message}", "error")
+        mainHandler.post { onConsole("getDeviceData: ${it.message}", "error") }
         "{}"
     }
 
@@ -311,7 +536,10 @@ class ScriptBridge(
     @JavascriptInterface
     fun bytesToHex(bytes: String): String = bytes.toByteArray().joinToString("") { "%02x".format(it) }
 
-    // Storage — 保存在内存 Map 中
+    @JavascriptInterface
+    fun renderGui(configJson: String) = mainHandler.post { onShowGui() }
+
+    // Storage — 内存级
     private val storage = mutableMapOf<String, String>()
 
     @JavascriptInterface
@@ -341,7 +569,6 @@ fun ScriptRunnerContent(
     modifier: Modifier = Modifier,
 ) {
     var isRunning by remember { mutableStateOf(false) }
-    var showWebView by remember { mutableIntStateOf(0) } // 0=hidden, 1=shown
     val consoleLog = remember { mutableStateListOf<ConsoleEntry>() }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
@@ -356,6 +583,7 @@ fun ScriptRunnerContent(
                 consoleLog.add(0, ConsoleEntry(msg, level))
                 if (consoleLog.size > 200) consoleLog.removeLast()
             },
+            onShowGui = { },
         )
     }
 
@@ -371,14 +599,13 @@ fun ScriptRunnerContent(
                     if (isRunning) {
                         webView?.evaluateJavascript("window.stop();", null)
                         isRunning = false
-                        consoleLog.add(0, ConsoleEntry("Script stopped", "info"))
+                        consoleLog.add(0, ConsoleEntry("脚本已停止", "info"))
                     } else {
                         consoleLog.clear()
                         consoleLog.add(0, ConsoleEntry("运行脚本...", "info"))
                         isRunning = true
                         val wv = webView
                         if (wv != null) {
-                            // 每次运行前重新注入 bridge（包含最新 device 信息）
                             val bridgeJs = buildJsBridge(deviceName, deviceAddr, authKey)
                             wv.evaluateJavascript(bridgeJs, null)
                             wv.evaluateJavascript(
@@ -423,7 +650,7 @@ fun ScriptRunnerContent(
         Card(
             modifier = Modifier.fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 4.dp)
-                .weight(if (showWebView > 0) 0.4f else 1f),
+                .weight(0.3f),
         ) {
             Column(modifier = Modifier.padding(8.dp)) {
                 Text(
@@ -458,58 +685,16 @@ fun ScriptRunnerContent(
             }
         }
 
-        // WebView — 默认隐藏（仅用于执行 JS），有 GUI 时展开
-        if (showWebView > 0) {
-            AndroidView(
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.allowFileAccess = false
-                        settings.allowContentAccess = false
-
-                        webViewClient = object : WebViewClient() {
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                super.onPageFinished(view, url)
-                                val bridgeJs = buildJsBridge(deviceName, deviceAddr, authKey)
-                                view?.evaluateJavascript(bridgeJs, null)
-                                webView = view
-                            }
-                        }
-
-                        webChromeClient = object : WebChromeClient() {
-                            override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
-                                msg?.let {
-                                    bridge.onConsole(
-                                        it.message(),
-                                        it.messageLevel()?.name?.lowercase() ?: "log",
-                                    )
-                                }
-                                return true
-                            }
-                        }
-
-                        addJavascriptInterface(bridge, "ScriptBridge")
-                        loadDataWithBaseURL(
-                            null,
-                            """<html><body style="background:#1e1e1e;color:#e0e0e0;font-family:sans-serif;padding:8px;margin:0;"></body></html>""",
-                            "text/html",
-                            "UTF-8",
-                            null,
-                        )
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().weight(0.6f),
-            )
-        }
-
-        // Hidden WebView (always present, for executing JS without GUI)
+        // WebView — 脚本执行 + GUI 渲染都在同一个 WebView 中（与 bandburg 一致）
         AndroidView(
             factory = { ctx ->
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.allowFileAccess = false
+                    settings.allowContentAccess = false
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
 
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
@@ -517,17 +702,37 @@ fun ScriptRunnerContent(
                             val bridgeJs = buildJsBridge(deviceName, deviceAddr, authKey)
                             view?.evaluateJavascript(bridgeJs, null)
                             webView = view
-                            consoleLog.add(0, ConsoleEntry("脚本引擎就绪" + if (deviceAddr.isNotEmpty()) "（设备: $deviceName）" else "（无设备）", "info"))
+                            consoleLog.add(
+                                0,
+                                ConsoleEntry(
+                                    "脚本引擎就绪" + if (deviceAddr.isNotEmpty()) "（设备: $deviceName）" else "（无设备）",
+                                    "info",
+                                ),
+                            )
+
+                            // WebView 准备就绪后自动执行脚本
+                            if (!isRunning && scriptCode.isNotBlank()) {
+                                isRunning = true
+                                view?.evaluateJavascript(
+                                    """
+                                    (async function() {
+                                        try {
+                                            $scriptCode
+                                        } catch(e) {
+                                            sandbox.error(e.toString() + '\\n' + (e.stack || ''));
+                                        }
+                                    })();
+                                    """.trimIndent(),
+                                    null,
+                                )
+                            }
                         }
                     }
 
                     webChromeClient = object : WebChromeClient() {
                         override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
                             msg?.let {
-                                bridge.onConsole(
-                                    it.message(),
-                                    it.messageLevel()?.name?.lowercase() ?: "log",
-                                )
+                                bridge.log(it.message())
                             }
                             return true
                         }
@@ -536,14 +741,14 @@ fun ScriptRunnerContent(
                     addJavascriptInterface(bridge, "ScriptBridge")
                     loadDataWithBaseURL(
                         null,
-                        "<html><body></body></html>",
+                        """<html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"></head><body style="background:#1e1e1e;color:#e0e0e0;font-family:system-ui,sans-serif;margin:0;padding:0;"></body></html>""",
                         "text/html",
                         "UTF-8",
                         null,
                     )
                 }
             },
-            modifier = Modifier.size(0.dp),
+            modifier = Modifier.fillMaxWidth().weight(0.7f),
         )
     }
 }

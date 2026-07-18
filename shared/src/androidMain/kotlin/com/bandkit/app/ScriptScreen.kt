@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,9 +35,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bandkit.app.core.createFilePicker
 import com.bandkit.app.core.currentTimeMillis
+import com.bandkit.app.core.pickFileFromPicker
 import com.bandkit.app.models.DeviceSession
 import com.bandkit.app.models.ScriptDoc
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import top.yukonga.miuix.kmp.basic.Button
@@ -48,6 +52,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Delete
+import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -66,6 +71,8 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
     var selectedIndex by remember { mutableStateOf(-1) }
     var showNewDialog by remember { mutableStateOf(false) }
     var newScriptName by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val filePicker = remember { createFilePicker() }
 
     // 当前编辑的脚本
     fun selectedScript(): ScriptDoc? = if (selectedIndex in scripts.indices) scripts[selectedIndex] else null
@@ -149,6 +156,22 @@ sandbox.log("Device data: " + JSON.stringify(data));""",
                 }
                 IconButton(onClick = { showNewDialog = true }) {
                     Icon(MiuixIcons.Add, contentDescription = "新建脚本")
+                }
+                IconButton(onClick = {
+                    scope.launch {
+                        val picked = pickFileFromPicker(filePicker)
+                        if (picked != null) {
+                            val content = picked.data.toString(Charsets.UTF_8)
+                            val name = picked.name.removeSuffix(".js").removeSuffix(".ts")
+                                .removeSuffix(".jsx").removeSuffix(".tsx")
+                            val script = ScriptDoc.create(name = name, content = content)
+                            scripts.add(script)
+                            selectedIndex = scripts.size - 1
+                            saveScripts(context, scripts.toList())
+                        }
+                    }
+                }) {
+                    Icon(MiuixIcons.Link, contentDescription = "导入JS文件")
                 }
             }
 
