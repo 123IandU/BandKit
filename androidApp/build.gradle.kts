@@ -95,15 +95,20 @@ android {
 // ======== Rust JNI 库 - 自动编译 + 复制（兼容配置缓存）=======
 
 // 全部在配置阶段解析，只捕获 Serializable 值
-val rustAbiMap = mapOf(
-    "aarch64-linux-android" to "arm64-v8a",
-    "armv7-linux-androideabi" to "armeabi-v7a",
-    "x86_64-linux-android" to "x86_64",
-)
+val rustAbiMap =
+    mapOf(
+        "aarch64-linux-android" to "arm64-v8a",
+        "armv7-linux-androideabi" to "armeabi-v7a",
+        "x86_64-linux-android" to "x86_64",
+    )
 val rustProjectDir = rootProject.projectDir.resolve("rust/app_android")
 val rustTargetDir = rustProjectDir.resolve("target")
 val rustMode = if (!gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }) "debug" else "release"
-val rustJniOutput = layout.buildDirectory.dir("rust-jni").get().asFile.absolutePath
+val rustJniOutput =
+    layout.buildDirectory
+        .dir("rust-jni")
+        .get()
+        .asFile.absolutePath
 
 // ======== 编译任务 ========
 rustAbiMap.forEach { (triple, abi) ->
@@ -115,9 +120,13 @@ rustAbiMap.forEach { (triple, abi) ->
         group = "BandKit"
         workingDir = rustProjectDir
         commandLine(
-            "cargo", "build",
-            "--target", triple,
-            "-p", "bandkit-app-android",
+            "cargo",
+            "build",
+            "--target",
+            triple,
+            "-p",
+            "bandkit-app-android",
+            *if (rustMode == "release") arrayOf("--release") else emptyArray(),
         )
         // 输出目录声明，用于增量构建判断
         outputs.dir(rustTargetDir.resolve("$triple/$rustMode"))
@@ -125,11 +134,12 @@ rustAbiMap.forEach { (triple, abi) ->
 }
 
 // 总编译任务
-val rustBuildTasks = rustAbiMap.keys.map { triple ->
-    val abi = rustAbiMap[triple]!!
-    val abiId = abi.replace("-", "").replaceFirstChar { it.uppercase() }
-    "buildRustLibs$abiId"
-}
+val rustBuildTasks =
+    rustAbiMap.keys.map { triple ->
+        val abi = rustAbiMap[triple]!!
+        val abiId = abi.replace("-", "").replaceFirstChar { it.uppercase() }
+        "buildRustLibs$abiId"
+    }
 tasks.register("buildRustLibs") {
     description = "编译所有 Rust 目标"
     group = "BandKit"
@@ -156,10 +166,11 @@ rustAbiMap.forEach { (triple, abi) ->
 }
 
 // 总复制任务
-val rustCopyTasks = rustAbiMap.values.map { abi ->
-    val abiId = abi.replace("-", "").replaceFirstChar { it.uppercase() }
-    "copyRustLibs$abiId"
-}
+val rustCopyTasks =
+    rustAbiMap.values.map { abi ->
+        val abiId = abi.replace("-", "").replaceFirstChar { it.uppercase() }
+        "copyRustLibs$abiId"
+    }
 tasks.register("copyRustLibs") {
     description = "编译 + 复制 Rust .so 到 build/rust-jni/"
     group = "BandKit"
@@ -167,19 +178,31 @@ tasks.register("copyRustLibs") {
 }
 
 // 绑定到 Android 构建生命周期
-val jniMergeTasks = mutableListOf<String>().apply {
-    // debug 和 release 的 JNI 合并任务
-    listOf("debug", "release").forEach { variant ->
-        add("merge${variant.replaceFirstChar { it.uppercase() }}JniLibFolders")
-        add("merge${variant.replaceFirstChar { it.uppercase() }}NativeLibs")
+val jniMergeTasks =
+    mutableListOf<String>().apply {
+        // debug 和 release 的 JNI 合并任务
+        listOf("debug", "release").forEach { variant ->
+            add("merge${variant.replaceFirstChar { it.uppercase() }}JniLibFolders")
+            add("merge${variant.replaceFirstChar { it.uppercase() }}NativeLibs")
+        }
     }
-}
-tasks.matching { it.name in jniMergeTasks }
+tasks
+    .matching { it.name in jniMergeTasks }
     .configureEach { dependsOn("copyRustLibs") }
 
 // 注册 jniLibs 源目录
 afterEvaluate {
-    val jniDir = layout.buildDirectory.dir("rust-jni").get().asFile
-    android.sourceSets.getByName("debug").jniLibs.srcDirs(jniDir)
-    android.sourceSets.getByName("release").jniLibs.srcDirs(jniDir)
+    val jniDir =
+        layout.buildDirectory
+            .dir("rust-jni")
+            .get()
+            .asFile
+    android.sourceSets
+        .getByName("debug")
+        .jniLibs
+        .srcDirs(jniDir)
+    android.sourceSets
+        .getByName("release")
+        .jniLibs
+        .srcDirs(jniDir)
 }

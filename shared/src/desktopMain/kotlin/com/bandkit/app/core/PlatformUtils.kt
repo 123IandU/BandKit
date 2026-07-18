@@ -19,7 +19,7 @@ actual fun loadSavedDevices(context: Any): List<SavedDevice> = emptyList()
 
 actual fun saveSavedDevices(context: Any, devices: List<SavedDevice>) {}
 
-actual fun launchSettingsActivity(context: Any) {}
+actual fun launchAboutActivity(context: Any) {}
 
 actual fun loadShowLogs(context: Any): Boolean = true
 

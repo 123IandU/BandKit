@@ -13,16 +13,48 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import com.bandkit.app.core.DeviceExportImportState
 import com.bandkit.app.core.handleDeviceExportResult
 import com.bandkit.app.core.handleDeviceImportResult
 import com.bandkit.app.core.handleFilePickerResult
 
 class MainActivity : ComponentActivity() {
+
     private val bluetoothPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
         val allGranted = permissions.values.all { it }
         Log.d(TAG, "Bluetooth permissions result: $allGranted $permissions")
+    }
+
+    private val importDeviceLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            handleDeviceImportResult(this, uri)
+        } else {
+            val callback = DeviceExportImportState.pendingImportResult ?: return@registerForActivityResult
+            DeviceExportImportState.pendingImportResult = null
+            callback(null)
+        }
+    }
+
+    private val exportDeviceLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri != null) {
+            handleDeviceExportResult(this, uri)
+        } else {
+            val callback = DeviceExportImportState.pendingExportResult ?: return@registerForActivityResult
+            DeviceExportImportState.pendingExportResult = null
+            callback(false)
+        }
+    }
+
+    private val filePickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) handleFilePickerResult(this, uri)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -31,6 +63,17 @@ class MainActivity : ComponentActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         requestBluetoothPermissions()
+
+        // Expose launchers so KMP code can use them
+        DeviceExportImportState.importLauncher = { type ->
+            importDeviceLauncher.launch(arrayOf(type))
+        }
+        DeviceExportImportState.exportLauncher = { type, title ->
+            exportDeviceLauncher.launch(title)
+        }
+        DeviceExportImportState.filePickerLauncher = { type ->
+            filePickerLauncher.launch(arrayOf(type))
+        }
 
         setContent {
             App()
@@ -50,18 +93,6 @@ class MainActivity : ComponentActivity() {
                 bluetoothPermissionLauncher.launch(needed.toTypedArray())
             } else {
                 Log.d(TAG, "Bluetooth permissions already granted")
-            }
-        }
-    }
-
-    @Suppress("DEPRECATION")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode == RESULT_OK) {
-            when (requestCode) {
-                9999 -> data?.data?.let { handleFilePickerResult(this, it) }
-                8888 -> data?.data?.let { handleDeviceExportResult(this, it) }
-                8889 -> data?.data?.let { handleDeviceImportResult(this, it) }
             }
         }
     }

@@ -18,7 +18,7 @@ expect suspend fun exportSavedDevicesToFile(context: Any, devices: List<SavedDev
 
 expect suspend fun importSavedDevicesFromFile(context: Any): List<SavedDevice>?
 
-expect fun launchSettingsActivity(context: Any)
+expect fun launchAboutActivity(context: Any)
 
 expect fun loadShowLogs(context: Any): Boolean
 
