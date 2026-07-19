@@ -13,6 +13,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import org.json.JSONObject
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -97,18 +98,117 @@ var _deviceAddr = ${jsonEscape(deviceAddr)};
 var _eventSinks = [];
 var _activeGUI = null;
 
-// ===== 控制台桥接 =====
+// ===== 事件系统（与 bandburg 一致）=====
+var _eventCallbacks = {};
+
+function _emitEvent(eventName, data) {
+    // 规范化事件名：device-connected → device_connected
+    var normalizedName = eventName.replace(/-/g, '_');
+    // 构建标准事件对象（bandburg 兼容格式）
+    function wrapEvent(extraData) {
+        var ev = { type: normalizedName, event: eventName };
+        for (var k in extraData) ev[k] = extraData[k];
+        return ev;
+    }
+    // 分发给指定事件名的回调（直接传递原始 data，不包装）
+    var callbacks = _eventCallbacks[normalizedName];
+    if (callbacks) {
+        var evForNamed = wrapEvent(data);
+        callbacks.forEach(function(cb) { try { cb(evForNamed); } catch(e) { _log('[事件] 回调错误: ' + e); } });
+    }
+    // 分发给通配符 '*' 回调
+    var wildcardCallbacks = _eventCallbacks['*'];
+    if (wildcardCallbacks) {
+        var evForWildcard = wrapEvent(data);
+        wildcardCallbacks.forEach(function(cb) { try { cb(evForWildcard); } catch(e) { _log('[事件] 回调错误: ' + e); } });
+    }
+    // 分发给 register_event_sink 注册的回调
+    _eventSinks.forEach(function(cb) {
+        try {
+            var evForSink = wrapEvent(data);
+            cb(evForSink);
+        } catch(e) { _log('[事件] 回调错误: ' + e); }
+    });
+}
+
+// 处理 WASM 日志中的事件消息（与 bandburg processWasmLog 一致）
+function _processWasmLog(logMessage) {
+    // thirdpartyapp_message
+    if (logMessage.indexOf('[WASM] Received third-party app message from') !== -1) {
+        var parts = logMessage.split('[WASM] Received third-party app message from');
+        if (parts.length > 1) {
+            var rest = parts[1].trim();
+            var colonIdx = rest.indexOf(':');
+            if (colonIdx !== -1) {
+                var packageName = rest.substring(0, colonIdx).trim();
+                var content = rest.substring(colonIdx + 1).trim();
+                var parsed = content;
+                try { parsed = JSON.parse(content); } catch(e) {}
+                _emitEvent('thirdpartyapp_message', {
+                    type: 'thirdpartyapp_message',
+                    package_name: packageName,
+                    data: parsed,
+                    rawMessage: logMessage,
+                    timestamp: Date.now()
+                });
+            }
+        }
+        return;
+    }
+    // pb_packet
+    if (logMessage.indexOf('[WASM] on_pb_packet:') !== -1) {
+        var parts2 = logMessage.split('[WASM] on_pb_packet:');
+        if (parts2.length > 1) {
+            var packetData;
+            try { packetData = JSON.parse(parts2[1].trim()); } catch(e) { packetData = parts2[1].trim(); }
+            _emitEvent('pb_packet', {
+                type: 'pb_packet',
+                packet: packetData,
+                rawMessage: logMessage,
+                timestamp: Date.now()
+            });
+        }
+        return;
+    }
+    // device_connected
+    if (logMessage.indexOf('[WASM] Device connected:') !== -1 || logMessage.indexOf('[WASM] 设备已连接:') !== -1) {
+        _emitEvent('device_connected', {
+            type: 'device_connected',
+            message: logMessage,
+            timestamp: Date.now()
+        });
+        return;
+    }
+    // device_disconnected
+    if (logMessage.indexOf('[WASM] Device disconnected:') !== -1 || logMessage.indexOf('[WASM] 设备已断开:') !== -1) {
+        _emitEvent('device_disconnected', {
+            type: 'device_disconnected',
+            message: logMessage,
+            timestamp: Date.now()
+        });
+        return;
+    }
+}
+
+// ===== 控制台桥接（拦截 WASM 日志）=====
+var _origConsoleLog = console.log;
+var _origConsoleWarn = console.warn;
+var _origConsoleError = console.error;
+
 function _log() {
     var args = Array.prototype.slice.call(arguments).join(' ');
     ScriptBridge.log(String(args));
+    _processWasmLog(args);
 }
 function _warn() {
     var args = Array.prototype.slice.call(arguments).join(' ');
     ScriptBridge.warn(String(args));
+    _processWasmLog(args);
 }
 function _error() {
     var args = Array.prototype.slice.call(arguments).join(' ');
     ScriptBridge.error(String(args));
+    _processWasmLog(args);
 }
 console.log = _log;
 console.warn = _warn;
@@ -174,6 +274,15 @@ var sandbox = {
                 _log('[事件] 事件监听器已注册');
             }
             return true;
+        },
+        on: function(event, cb) {
+            if (!_eventCallbacks[event]) _eventCallbacks[event] = [];
+            _eventCallbacks[event].push(cb);
+        },
+        off: function(event, cb) {
+            if (!_eventCallbacks[event]) return;
+            var idx = _eventCallbacks[event].indexOf(cb);
+            if (idx !== -1) _eventCallbacks[event].splice(idx, 1);
         }
     },
     gui: function(config) {
@@ -442,6 +551,9 @@ class ScriptBridge(
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** 执行脚本的 WebView 引用，用于推送事件 */
+    var scriptWebView: WebView? = null
+
     @JavascriptInterface
     fun log(message: String) = mainHandler.post { onConsole(message, "log") }
 
@@ -557,6 +669,23 @@ class ScriptBridge(
 
     @JavascriptInterface
     fun renderGui(configJson: String) = mainHandler.post { onShowGui() }
+
+    /**
+     * 将设备事件推送到 WebView 的 JS 事件系统
+     * @param eventName 事件类型（thirdpartyapp_message / pb_packet / device_connected / device_disconnected）
+     * @param dataJson 事件数据 JSON
+     */
+    @JavascriptInterface
+    fun pushEvent(eventName: String, dataJson: String) {
+        val wv = scriptWebView ?: return
+        val escaped = dataJson.replace("\\", "\\\\").replace("'", "\\'")
+        mainHandler.post {
+            wv.evaluateJavascript(
+                "_emitEvent(${jsonEscape(eventName)}, JSON.parse('$escaped'));",
+                null,
+            )
+        }
+    }
 
     @JavascriptInterface
     fun getThemeMode(): String {
@@ -678,6 +807,45 @@ fun ScriptRunnerContent(
         )
     }
 
+    // 注册 NativeDevice 事件回调，将事件推送到 WebView
+    LaunchedEffect(session) {
+        NativeDevice.registerEventSink { eventType, eventData ->
+            bridge.pushEvent(eventType, eventData)
+        }
+        NativeDevice.registerThirdpartyAppMessageCallback { json ->
+            try {
+                val obj = JSONObject(json)
+                val hexPayload = obj.optString("payload", "")
+                // 解码 hex payload → UTF-8 字符串 → 尝试解析为 JSON
+                val decodedPayload = try {
+                    val bytes = hexPayload.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                    val text = String(bytes, Charsets.UTF_8)
+                    // 如果解码结果是 JSON 对象/数组，解析为结构化数据
+                    if (text.startsWith("{") || text.startsWith("[")) {
+                        JSONObject(text) // 尝试解析，失败回退到字符串
+                    } else text
+                } catch (_: Exception) {
+                    hexPayload // 解码失败就用原始 hex 字符串
+                }
+
+                val transformed = JSONObject()
+                transformed.put("package_name", obj.optString("pkg_name", ""))
+                transformed.put("data", decodedPayload)
+                transformed.put("rawMessage", json)
+                transformed.put("timestamp", System.currentTimeMillis())
+                // 保留原始 Rust 字段
+                transformed.put("device_addr", obj.optString("device_addr", ""))
+                transformed.put("pkg_name", obj.optString("pkg_name", ""))
+                bridge.pushEvent("thirdpartyapp_message", transformed.toString())
+            } catch (_: Exception) {
+                bridge.pushEvent("thirdpartyapp_message", json)
+            }
+        }
+        NativeDevice.registerPbPacketCallback { json ->
+            bridge.pushEvent("pb_packet", json)
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         // Toolbar
         Row(
@@ -759,6 +927,7 @@ fun ScriptRunnerContent(
                             val bridgeJs = buildJsBridge(deviceName, deviceAddr, authKey)
                             view?.evaluateJavascript(bridgeJs, null)
                             webView = view
+                            bridge.scriptWebView = view
                             consoleLog.add(
                                 0,
                                 ConsoleEntry(

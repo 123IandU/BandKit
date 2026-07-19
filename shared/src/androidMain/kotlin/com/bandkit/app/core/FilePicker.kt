@@ -48,8 +48,11 @@ fun handleFilePickerResult(context: Context, uri: Uri?) {
             val cursor = contentResolver.query(uri, null, null, null, null)
             cursor?.use {
                 val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIndex >= 0 && it.moveToFirst()) it.getString(nameIndex)
-                else null
+                if (nameIndex >= 0 && it.moveToFirst()) {
+                    it.getString(nameIndex)
+                } else {
+                    null
+                }
             } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "unknown"
         }
         val inputStream = contentResolver.openInputStream(uri)

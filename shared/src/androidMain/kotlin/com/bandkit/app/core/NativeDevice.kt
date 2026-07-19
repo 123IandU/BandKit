@@ -9,6 +9,8 @@ object NativeDevice {
 
     // ======== 事件回调 ========
     external fun registerEventSink(callback: (String, String) -> Unit)
+    external fun registerThirdpartyAppMessageCallback(callback: (String) -> Unit)
+    external fun registerPbPacketCallback(callback: (String) -> Unit)
 
     // ======== 设备连接 ========
     external fun deviceConnect(

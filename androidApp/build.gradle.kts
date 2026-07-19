@@ -128,6 +128,10 @@ rustAbiMap.forEach { (triple, abi) ->
             "bandkit-app-android",
             *if (rustMode == "release") arrayOf("--release") else emptyArray(),
         )
+        // 跟踪源文件变化，确保 Rust 代码变更时自动重编
+        inputs.dir(rustProjectDir.resolve("src"))
+        inputs.file(rustProjectDir.resolve("Cargo.toml"))
+        inputs.file(rustProjectDir.resolve("Cargo.lock"))
         // 输出目录声明，用于增量构建判断
         outputs.dir(rustTargetDir.resolve("$triple/$rustMode"))
     }

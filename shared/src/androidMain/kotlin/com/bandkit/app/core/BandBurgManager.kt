@@ -33,7 +33,13 @@ actual class BandBurgManager {
         NativeDevice.registerEventSink { event, payload ->
             Log.d(TAG, "NativeDevice event: $event -> $payload")
         }
-        Log.d(TAG, "NativeDevice event sink registered")
+        NativeDevice.registerThirdpartyAppMessageCallback { json ->
+            Log.d(TAG, "NativeDevice thirdpartyapp_message: $json")
+        }
+        NativeDevice.registerPbPacketCallback { json ->
+            Log.d(TAG, "NativeDevice pb_packet: $json")
+        }
+        Log.d(TAG, "NativeDevice event sinks registered")
     }
 
     fun init(appContext: Context) {
@@ -196,7 +202,17 @@ actual class BandBurgManager {
                     resType = byteArrayOf(resType.toByte()),
                     data = fileData,
                     packageName = resolvedPackageName,
-                    progressCb = null,
+                    progressCb = { jsonPayload: Any? ->
+                        if (jsonPayload is String) {
+                            try {
+                                val obj = Json.parseToJsonElement(jsonPayload).jsonObject
+                                val progress = obj["progress"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()
+                                if (progress != null) onProgress(progress)
+                            } catch (_: Exception) {
+                                // 忽略格式异常的进度 JSON
+                            }
+                        }
+                    },
                     watchfaceId = null,
                 )
             }

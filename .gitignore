@@ -48,3 +48,4 @@ tools/
 # Stale files
 ANDROID_JNI_INTEGRATION_GUIDE.md
 LICENSE_astrobox.txt
+/docs/superpowers/specs/2026-07-18-quickjs-script-engine-design.md
