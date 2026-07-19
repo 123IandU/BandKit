@@ -1069,14 +1069,20 @@ private fun InstallSection(
                         onClick = {
                             isInstalling = true
                             installProgress = 0f
+                            val resType = when {
+                                file.name.endsWith(".rpk", true) -> 64
+                                file.name.endsWith(".bin", true) -> 16
+                                else -> 16
+                            }
+                            val resTypeName = when (resType) {
+                                64 -> "RPK(第三方应用)"
+                                16 -> "BIN(表盘/固件)"
+                                else -> "$resType"
+                            }
+                            onLog("开始安装: ${file.name} (${file.data.size} 字节, 类型=$resTypeName)", LogType.INFO)
                             installMessage = "正在安装 ${file.name}..."
                             scope.launch {
                                 try {
-                                    val resType = when {
-                                        file.name.endsWith(".rpk", true) -> 64
-                                        file.name.endsWith(".bin", true) -> 16
-                                        else -> 16
-                                    }
                                     val result = withContext(IO) {
                                         manager.installFile(
                                             session,
@@ -1092,10 +1098,10 @@ private fun InstallSection(
                                     if (result) {
                                         onLog("文件安装成功: ${file.name}", LogType.SUCCESS)
                                     } else {
-                                        onLog("文件安装失败: ${file.name}", LogType.ERROR)
+                                        onLog("文件安装失败: ${file.name}，请查看 Logcat 获取详细错误", LogType.ERROR)
                                     }
                                 } catch (e: Exception) {
-                                    onLog("安装失败: ${e.message}", LogType.ERROR)
+                                    onLog("安装异常: ${e.message}", LogType.ERROR)
                                 } finally {
                                     isInstalling = false
                                     installProgress = -1f

@@ -118,6 +118,7 @@ Cargo 配置 `.cargo/config.toml` 指定 NDK 链接器路径。
 
 - **`sandbox.wasm.register_event_sink(callback)`** — 回调仅存入 `_eventSinks` 数组，无实际事件数据流入。Bandburg 通过 WasmClient 的 console log 拦截 + WASM 回调接收 `thirdpartyapp_message`、`pb_packet`、`device_connected`、`device_disconnected` 事件。BandKit 的 NativeDevice JNI 层未将这些事件转发到 WebView。完整实现需在 NativeDevice JNI 层添加事件回调，通过 `webView.evaluateJavascript()` 将事件推送到 JS 侧。
 - **`sandbox.wasm.miwear_get_file_type`** / **`sandbox.wasm.miwear_install`** — stub 实现，返回空值/ false。
+- **RPK 安装失败（2026-07-19 已修复）**：`BandBurgManager.installFile` 通过 JNI → `NativeDevice.installFile` → Rust `app_android` 层 `device_install_file`。bandburg / AstroBox-NG（app_wasm）能装但 BandKit 不行。定位到两个问题：<br>① `FilePicker.handleFilePickerResult` 中通过 `uri.lastPathSegment` 取文件名得到的是 URI 段（如 `msf:1000000085`）而非实际文件名，导致 `.rpk` 后缀无法识别，`resType` 被设为 `16`（BIN）而非 `64`（RPK）。<br>② 表盘安装（resType=16）时 `watchfaceId` 传 `null`，Rust 层报 `invalid watchface id`。<br>①已修复（改用 `ContentResolver` 查询 `OpenableColumns.DISPLAY_NAME`）。②待修复。
 
 ## Gotchas
 

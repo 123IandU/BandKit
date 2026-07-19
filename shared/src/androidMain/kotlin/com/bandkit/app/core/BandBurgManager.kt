@@ -172,8 +172,12 @@ actual class BandBurgManager {
 
         // 如果是第三方应用（type=64）且没传包名，从 RPK 中提取
         val resolvedPackageName = if (packageName == null && resType == 64) {
-            extractRpkgPackageName(fileData)
+            Log.d(TAG, "installFile: resType=64, no packageName provided, extracting from RPK...")
+            val pkg = extractRpkgPackageName(fileData)
+            Log.d(TAG, "installFile: extractRpkgPackageName returned: ${pkg ?: "null"}")
+            pkg
         } else {
+            Log.d(TAG, "installFile: using provided packageName=$packageName, resType=$resType")
             packageName
         }
 
@@ -185,6 +189,7 @@ actual class BandBurgManager {
             )
             onProgress(0f)
 
+            Log.d(TAG, "installFile: calling NativeDevice.deviceInstall (addr=$addr, resType=${resType.toByte()})...")
             val result = withContext(Dispatchers.IO) {
                 NativeDevice.deviceInstall(
                     addr = addr,
@@ -195,16 +200,17 @@ actual class BandBurgManager {
                     watchfaceId = null,
                 )
             }
+            Log.d(TAG, "installFile: NativeDevice.deviceInstall returned: $result")
 
             if (result) {
                 onProgress(1f)
                 Log.d(TAG, "File install completed: $fileName")
             } else {
-                Log.e(TAG, "File install failed: $fileName")
+                Log.e(TAG, "File install FAILED: $fileName")
             }
             result
         } catch (e: Exception) {
-            Log.e(TAG, "installFile failed: $fileName", e)
+            Log.e(TAG, "installFile threw exception for: $fileName", e)
             false
         }
     }
@@ -227,18 +233,29 @@ actual class BandBurgManager {
             val zis = ZipInputStream(ByteArrayInputStream(fileData))
             val rpkJson = Json { ignoreUnknownKeys = true }
             var entry = zis.nextEntry
+            var entryIndex = 0
+            Log.d(TAG, "extractRpkgPackageName: scanning ZIP entries...")
             while (entry != null) {
-                if (entry.name.removePrefix("/").let { it == "manifest.json" || it.endsWith("/manifest.json") }) {
-                    val jsonText = zis.readBytes().decodeToString()
+                entryIndex++
+                val nameClean = entry.name.removePrefix("/")
+                Log.d(TAG, "extractRpkgPackageName: entry #$entryIndex: ${entry.name} (size=${entry.size}, clean=$nameClean)")
+                if (nameClean == "manifest.json" || nameClean.endsWith("/manifest.json")) {
+                    Log.d(TAG, "extractRpkgPackageName: found manifest.json at entry #$entryIndex")
+                    val rawBytes = zis.readBytes()
+                    val jsonText = rawBytes.decodeToString()
+                    Log.d(TAG, "extractRpkgPackageName: manifest.json content (${rawBytes.size} bytes): $jsonText")
                     val pkg = try {
                         val obj = rpkJson.parseToJsonElement(jsonText).jsonObject
-                        obj["package"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-                    } catch (_: Exception) {
+                        val found = obj["package"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+                        Log.d(TAG, "extractRpkgPackageName: parsed JSON, 'package' field = ${found ?: "null/blank"}")
+                        found
+                    } catch (e: Exception) {
+                        Log.w(TAG, "extractRpkgPackageName: failed to parse manifest.json JSON: ${e.message}")
                         null
                     }
                     zis.close()
                     if (pkg != null) {
-                        Log.d(TAG, "extractRpkgPackageName: found from manifest.json: $pkg")
+                        Log.d(TAG, "extractRpkgPackageName: found package name: $pkg")
                         return pkg
                     }
                     Log.w(TAG, "extractRpkgPackageName: manifest.json found but no 'package' field")
@@ -247,7 +264,7 @@ actual class BandBurgManager {
                 entry = zis.nextEntry
             }
             zis.close()
-            Log.w(TAG, "extractRpkgPackageName: no manifest.json found in RPK")
+            Log.w(TAG, "extractRpkgPackageName: no manifest.json found in RPK (scanned $entryIndex entries)")
             null
         } catch (e: Exception) {
             Log.w(TAG, "extractRpkgPackageName failed: ${e.message}")

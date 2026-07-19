@@ -334,27 +334,11 @@ var sandbox = {
                     fileInput.addEventListener('change', function(e) {
                         var file = e.target.files && e.target.files[0];
                         if (file) {
-                            var reader = new FileReader();
-                            reader.onload = function(event) {
-                                var arrayBuffer = event.target.result;
-                                var bytes = new Uint8Array(arrayBuffer);
-                                var binary = '';
-                                for (var i = 0; i < bytes.length; i++) {
-                                    binary += String.fromCharCode(bytes[i]);
-                                }
-                                var base64Data = btoa(binary);
-                                values[elementId] = {
-                                    name: file.name,
-                                    type: file.type,
-                                    size: file.size,
-                                    data: base64Data
-                                };
-                                var infoEl = document.getElementById('__file_info_' + elementId + '__');
-                                if (infoEl) infoEl.textContent = file.name + ' (' + (file.size > 1024 ? Math.round(file.size/1024) + 'KB' : file.size + 'B') + ')';
-                                var listeners = eventListeners['file:change'][elementId];
-                                if (listeners) listeners.forEach(function(cb) { cb(values[elementId]); });
-                            };
-                            reader.readAsArrayBuffer(file);
+                            values[elementId] = file;
+                            var infoEl = document.getElementById('__file_info_' + elementId + '__');
+                            if (infoEl) infoEl.textContent = file.name + ' (' + (file.size > 1024 ? Math.round(file.size/1024) + 'KB' : file.size + 'B') + ')';
+                            var listeners = eventListeners['file:change'][elementId];
+                            if (listeners) listeners.forEach(function(cb) { cb(values[elementId]); });
                         }
                     });
                     container.appendChild(fileInput);

@@ -44,7 +44,14 @@ fun handleFilePickerResult(context: Context, uri: Uri?) {
 
     try {
         val contentResolver = context.contentResolver
-        val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "unknown"
+        val fileName = run {
+            val cursor = contentResolver.query(uri, null, null, null, null)
+            cursor?.use {
+                val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0 && it.moveToFirst()) it.getString(nameIndex)
+                else null
+            } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "unknown"
+        }
         val inputStream = contentResolver.openInputStream(uri)
         val bytes = inputStream?.readBytes()
         inputStream?.close()
