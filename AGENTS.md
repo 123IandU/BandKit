@@ -100,18 +100,24 @@ Cargo 配置 `.cargo/config.toml` 指定 NDK 链接器路径。
 使用 WebView 执行 JavaScript 脚本，通过 `ScriptBridge`（`@JavascriptInterface`）桥接 Android JNI 设备通信。bandburg 兼容的 `sandbox.wasm.*` API。
 
 - `ScriptDoc.kt`（commonMain） — 脚本数据模型
-- `ScriptScreen.kt`（androidMain） — Scripta `CodeEditor` 编辑器 + 脚本列表 + 保存/运行按钮
-- `ScriptRunnerScreen.kt`（androidMain） — WebView + ScriptBridge + 控制台输出组件
-- `ScriptRunnerActivity.kt`（androidApp） — 接收脚本代码 via Intent，启动 WebView 运行
+- `ScriptScreen.kt`（androidMain） — Scripta `CodeEditor` 编辑器 + 单文件模式 + 文件管理对话框 + 在线脚本商店（内嵌 JS）
+- `ScriptRunnerScreen.kt`（androidMain） — 单 WebView（脚本执行 + GUI 渲染同一 DOM）+ ScriptBridge + 控制台输出
+- `ScriptRunnerActivity.kt`（androidApp） — 接收脚本代码 via Intent，启动 WebView 运行；处理文件选择器回调
 - `PlatformScriptScreen.kt`（commonMain + 平台 stub） — expect/actual 入口
 
 脚本 API（与 bandburg 兼容）：
 - `sandbox.log/warn/error`、`sandbox.currentDevice`、`sandbox.devices`
 - `sandbox.wasm.*` — `miwear_*`、`thirdpartyapp_*`、`watchface_*`、`register_event_sink`
-- `sandbox.gui(config)` — 返回虚拟 controller（`getValues`/`on`/`close`/`show`/`hide`）
+- `sandbox.gui(config)` — DOM 渲染 GUI（`label/input/textarea/select/button/file`），controller 方法：`getValues/getValue/setValue/on/close/show/hide`
 - `sandbox.storage` — 内存级 get/set/remove/clear
 - `sandbox.utils.hexToBytes`/`bytesToHex`
+- `sandbox.saveScript(name, content)` — 保存脚本到 app SharedPreferences（BandKit 扩展）
 - 向后兼容：`var bandkit = sandbox`
+
+### 未实现 / 已知限制
+
+- **`sandbox.wasm.register_event_sink(callback)`** — 回调仅存入 `_eventSinks` 数组，无实际事件数据流入。Bandburg 通过 WasmClient 的 console log 拦截 + WASM 回调接收 `thirdpartyapp_message`、`pb_packet`、`device_connected`、`device_disconnected` 事件。BandKit 的 NativeDevice JNI 层未将这些事件转发到 WebView。完整实现需在 NativeDevice JNI 层添加事件回调，通过 `webView.evaluateJavascript()` 将事件推送到 JS 侧。
+- **`sandbox.wasm.miwear_get_file_type`** / **`sandbox.wasm.miwear_install`** — stub 实现，返回空值/ false。
 
 ## Gotchas
 
@@ -139,6 +145,9 @@ Cargo 配置 `.cargo/config.toml` 指定 NDK 链接器路径。
 - `rust/app_android` 和 `rust/app_wasm` 都是 git submodule — `git submodule update --init --recursive` 初始化
 - `third_party/scripta` 是 composite build（`includeBuild("third_party/scripta")` 在 settings.gradle.kts）
 - `ScriptRunnerActivity` 使用 `Class.forName` 方式在 shared 模块中引用 — 修改 Activity 类名需同步更新 `ScriptScreen.kt` 中的字符串
-- Script 运行器使用双 WebView：一个隐藏（JS 执行）+ 一个可见（GUI 渲染）— `showWebView` 状态控制
+
+- `@JavascriptInterface` 方法在 WebView 后台线程执行 — 修改 Compose 状态必须通过 `Handler(Looper.getMainLooper()).post {}` 切到主线程，否则不会触发重组
+- WebView `<input type="file">` 需要 `WebChromeClient.onShowFileChooser` + Activity `onActivityResult` 回调
+- 内嵌在线脚本商店（`SCRIPT_STORE_CODE`）通过 `sandbox.saveScript()` 写入 SharedPreferences，脚本页通过 `LifecycleEventObserver ON_RESUME` 刷新列表
 
 ## Notes

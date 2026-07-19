@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.bandkit.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -70,6 +71,21 @@ class ScriptRunnerActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+            }
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == WebViewFileChooser.REQUEST_CODE) {
+            val callback = WebViewFileChooser.filePathCallback ?: return
+            WebViewFileChooser.filePathCallback = null
+            if (resultCode == RESULT_OK && data != null) {
+                val result = data.data?.let { arrayOf(it) } ?: emptyArray()
+                callback.onReceiveValue(result)
+            } else {
+                callback.onReceiveValue(null)
             }
         }
     }

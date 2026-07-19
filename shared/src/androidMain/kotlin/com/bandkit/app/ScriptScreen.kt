@@ -52,7 +52,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.icon.extended.Link
+import top.yukonga.miuix.kmp.icon.extended.Edit
+import top.yukonga.miuix.kmp.icon.extended.Import
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -68,34 +69,47 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
     val context = LocalContext.current
 
     val scripts = remember { mutableStateListOf<ScriptDoc>() }
-    var selectedIndex by remember { mutableStateOf(-1) }
+    var currentScript by remember { mutableStateOf<ScriptDoc?>(null) }
+    var showFileManager by remember { mutableStateOf(false) }
     var showNewDialog by remember { mutableStateOf(false) }
     var newScriptName by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     val filePicker = remember { createFilePicker() }
 
-    // 当前编辑的脚本
-    fun selectedScript(): ScriptDoc? = if (selectedIndex in scripts.indices) scripts[selectedIndex] else null
-
     val controller = rememberSaveableCodeEditorController(
-        initialText = selectedScript()?.content ?: """// BandKit Script
-sandbox.log("Hello from BandKit!");
-
-// 获取设备数据
-const data = sandbox.wasm.miwear_get_data("", "info");
-sandbox.log("Device data: " + JSON.stringify(data));""",
+        initialText = currentScript?.content ?: "",
     )
 
-    // 加载脚本
+    // 加载脚本列表，打开第一个
     LaunchedEffect(Unit) {
         scripts.clear()
         scripts.addAll(loadScripts(context))
-        if (scripts.isNotEmpty()) selectedIndex = 0
+        if (currentScript == null && scripts.isNotEmpty()) {
+            currentScript = scripts[0]
+        }
     }
 
-    // 当切换选中脚本时更新编辑器内容
-    LaunchedEffect(selectedIndex) {
-        selectedScript()?.let { controller.setDocument(it.content) }
+    // 页面恢复时重新加载（从 ScriptRunnerActivity 返回后刷新列表）
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                scripts.clear()
+                scripts.addAll(loadScripts(context))
+                // 保持当前选中的脚本
+                val cur = currentScript
+                if (cur != null) {
+                    currentScript = scripts.find { it.id == cur.id } ?: scripts.firstOrNull()
+                }
+            }
+        }
+        val lifecycle = (context as? androidx.lifecycle.LifecycleOwner)?.lifecycle
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
+    }
+
+    // 当前脚本切换时更新编辑器
+    LaunchedEffect(currentScript?.id) {
+        currentScript?.let { controller.setDocument(it.content) }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -107,56 +121,41 @@ sandbox.log("Device data: " + JSON.stringify(data));""",
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(
-                    onClick = {
-                        val script = selectedScript() ?: return@Button
-                        val updatedScript = script.copy(
-                            content = controller.getText(),
-                            updatedAt = currentTimeMillis(),
-                        )
-                        val idx = scripts.indexOf(script)
-                        if (idx >= 0) scripts[idx] = updatedScript
-                        saveScripts(context, scripts.toList())
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColorsPrimary(),
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Ok,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
+                // 保存
+                IconButton(onClick = {
+                    val script = currentScript ?: return@IconButton
+                    val updated = script.copy(
+                        content = controller.getText(),
+                        updatedAt = currentTimeMillis(),
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("保存")
+                    val idx = scripts.indexOfFirst { it.id == script.id }
+                    if (idx >= 0) scripts[idx] = updated
+                    currentScript = updated
+                    saveScripts(context, scripts.toList())
+                }) {
+                    Icon(MiuixIcons.Ok, contentDescription = "保存", modifier = Modifier.size(20.dp))
                 }
-                Button(
-                    onClick = {
-                        val code = controller.getText()
+                // 运行
+                IconButton(onClick = {
+                    val code = controller.getText()
 
-                        @Suppress("UNCHECKED_CAST")
-                        val activityClass = Class.forName("com.bandkit.app.ScriptRunnerActivity") as Class<android.app.Activity>
-                        val intent = Intent(context, activityClass).apply {
-                            putExtra(EXTRA_SCRIPT_CODE, code)
-                            putExtra(EXTRA_DEVICE_ADDR, session?.device?.addr ?: "")
-                            putExtra(EXTRA_DEVICE_NAME, session?.device?.name ?: "")
-                            putExtra(EXTRA_AUTH_KEY, session?.device?.authkey ?: "")
-                        }
-                        context.startActivity(intent)
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColorsPrimary(),
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Play,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp),
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("运行")
+                    @Suppress("UNCHECKED_CAST")
+                    val activityClass = Class.forName("com.bandkit.app.ScriptRunnerActivity") as Class<android.app.Activity>
+                    val intent = Intent(context, activityClass).apply {
+                        putExtra(EXTRA_SCRIPT_CODE, code)
+                        putExtra(EXTRA_DEVICE_ADDR, session?.device?.addr ?: "")
+                        putExtra(EXTRA_DEVICE_NAME, session?.device?.name ?: "")
+                        putExtra(EXTRA_AUTH_KEY, session?.device?.authkey ?: "")
+                    }
+                    context.startActivity(intent)
+                }) {
+                    Icon(MiuixIcons.Play, contentDescription = "运行", modifier = Modifier.size(20.dp))
                 }
+                // 新建
                 IconButton(onClick = { showNewDialog = true }) {
-                    Icon(MiuixIcons.Add, contentDescription = "新建脚本")
+                    Icon(MiuixIcons.Add, contentDescription = "新建脚本", modifier = Modifier.size(20.dp))
                 }
+                // 导入
                 IconButton(onClick = {
                     scope.launch {
                         val picked = pickFileFromPicker(filePicker)
@@ -166,103 +165,162 @@ sandbox.log("Device data: " + JSON.stringify(data));""",
                                 .removeSuffix(".jsx").removeSuffix(".tsx")
                             val script = ScriptDoc.create(name = name, content = content)
                             scripts.add(script)
-                            selectedIndex = scripts.size - 1
+                            currentScript = script
                             saveScripts(context, scripts.toList())
                         }
                     }
                 }) {
-                    Icon(MiuixIcons.Link, contentDescription = "导入JS文件")
+                    Icon(MiuixIcons.Import, contentDescription = "导入JS文件", modifier = Modifier.size(20.dp))
+                }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // 文件管理
+                IconButton(onClick = { showFileManager = true }) {
+                    Icon(MiuixIcons.Edit, contentDescription = "文件管理", modifier = Modifier.size(20.dp))
                 }
             }
 
-            // 脚本列表 + 编辑器
-            Row(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+            // 当前文件名
+            currentScript?.let { script ->
+                Text(
+                    text = script.name,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                )
+            }
+
+            // 编辑器
+            Card(
+                modifier = Modifier.fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 8.dp),
             ) {
-                // 脚本列表（左侧，约 35% 宽度）
+                CodeEditor(
+                    controller = controller,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+
+        // 文件管理对话框
+        if (showFileManager) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f))
+                    .clickable { showFileManager = false },
+                contentAlignment = Alignment.Center,
+            ) {
                 Card(
-                    modifier = Modifier.width(140.dp).padding(end = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth(0.9f)
+                        .height(400.dp)
+                        .clickable(enabled = false) {},
                 ) {
-                    Column(modifier = Modifier.fillMaxSize()) {
+                    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                         Text(
-                            text = "脚本列表",
-                            fontSize = 12.sp,
+                            text = "脚本管理",
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(8.dp, 8.dp, 8.dp, 4.dp),
                         )
-                        LazyColumn(modifier = Modifier.weight(1f)) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        LazyColumn(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
                             items(scripts) { script ->
-                                val idx = scripts.indexOf(script)
-                                val isSelected = idx == selectedIndex
+                                val isCurrent = script.id == currentScript?.id
                                 Row(
-                                    modifier = Modifier.fillMaxWidth()
-                                        .padding(2.dp, 1.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            if (isCurrent) {
+                                                MiuixTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                            } else {
+                                                Color.Transparent
+                                            },
+                                        )
+                                        .clickable {
+                                            currentScript = script
+                                            showFileManager = false
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Text(
-                                        text = script.name,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) {
-                                            MiuixTheme.colorScheme.primary
-                                        } else {
-                                            MiuixTheme.colorScheme.onSurface
-                                        },
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f)
-                                            .padding(4.dp)
-                                            .clickable { selectedIndex = idx },
-                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = script.name,
+                                            fontSize = 14.sp,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isCurrent) {
+                                                MiuixTheme.colorScheme.primary
+                                            } else {
+                                                MiuixTheme.colorScheme.onSurface
+                                            },
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                        Text(
+                                            text = formatTime(script.updatedAt),
+                                            fontSize = 11.sp,
+                                            color = Color.Gray,
+                                        )
+                                    }
                                     IconButton(
                                         onClick = {
-                                            if (idx == selectedIndex && idx < scripts.size - 1) {
-                                                selectedIndex = idx
-                                            }
-                                            scripts.removeAt(idx)
-                                            if (selectedIndex >= scripts.size) {
-                                                selectedIndex = scripts.size - 1
+                                            scripts.remove(script)
+                                            if (currentScript?.id == script.id) {
+                                                currentScript = scripts.firstOrNull()
                                             }
                                             saveScripts(context, scripts.toList())
                                         },
-                                        modifier = Modifier.size(24.dp),
+                                        modifier = Modifier.size(32.dp),
                                     ) {
                                         Icon(
-                                            imageVector = MiuixIcons.Delete,
+                                            MiuixIcons.Delete,
                                             contentDescription = "删除",
-                                            modifier = Modifier.size(14.dp),
+                                            modifier = Modifier.size(16.dp),
                                             tint = MiuixTheme.colorScheme.error,
                                         )
                                     }
                                 }
                             }
                         }
-                    }
-                }
-
-                // 编辑器（右侧）
-                Card(
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Column(modifier = Modifier.fillMaxSize().padding(4.dp)) {
-                        selectedScript()?.let { script ->
-                            Text(
-                                text = script.name,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                        ) {
+                            Button(
+                                onClick = {
+                                    showFileManager = false
+                                    @Suppress("UNCHECKED_CAST")
+                                    val cls = Class.forName("com.bandkit.app.ScriptRunnerActivity") as Class<android.app.Activity>
+                                    val intent = Intent(context, cls).apply {
+                                        putExtra(EXTRA_SCRIPT_CODE, SCRIPT_STORE_CODE)
+                                        putExtra(EXTRA_DEVICE_ADDR, session?.device?.addr ?: "")
+                                        putExtra(EXTRA_DEVICE_NAME, session?.device?.name ?: "")
+                                        putExtra(EXTRA_AUTH_KEY, session?.device?.authkey ?: "")
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                colors = ButtonDefaults.buttonColorsPrimary(),
+                            ) {
+                                Text("在线商店")
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(onClick = { showFileManager = false }) {
+                                Text("关闭")
+                            }
                         }
-                        CodeEditor(
-                            controller = controller,
-                            modifier = Modifier.fillMaxSize(),
-                        )
                     }
                 }
             }
         }
 
-        // 新建脚本对话框（半透明遮罩层 + Card）
+        // 新建脚本对话框
         if (showNewDialog) {
             Box(
                 modifier = Modifier
@@ -315,7 +373,7 @@ sandbox.log("Device data: " + JSON.stringify(data));""",
 sandbox.log("Hello from $name!");""",
                                     )
                                     scripts.add(script)
-                                    selectedIndex = scripts.size - 1
+                                    currentScript = script
                                     saveScripts(context, scripts.toList())
                                     showNewDialog = false
                                     newScriptName = ""
@@ -326,6 +384,17 @@ sandbox.log("Hello from $name!");""",
                 }
             }
         }
+    }
+}
+
+private fun formatTime(timestamp: Long): String {
+    val now = currentTimeMillis()
+    val diff = now - timestamp
+    return when {
+        diff < 60_000 -> "刚刚"
+        diff < 3600_000 -> "${diff / 60_000} 分钟前"
+        diff < 86400_000 -> "${diff / 3600_000} 小时前"
+        else -> "${diff / 86400_000} 天前"
     }
 }
 
@@ -413,3 +482,110 @@ const val EXTRA_SCRIPT_CODE = "script_code"
 const val EXTRA_DEVICE_ADDR = "device_addr"
 const val EXTRA_DEVICE_NAME = "device_name"
 const val EXTRA_AUTH_KEY = "auth_key"
+
+private val SCRIPT_STORE_CODE = """
+// 在线脚本商店
+sandbox.log("=== 在线脚本商店 ===");
+
+var INDEX_URL = "https://bandburgscript.02studio.xyz/scripts.json";
+
+async function fetchScriptList() {
+    sandbox.log("正在获取脚本列表...");
+    var resp = await fetch(INDEX_URL);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    return await resp.json();
+}
+
+async function fetchScriptCode(url) {
+    var resp = await fetch(url);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    return await resp.text();
+}
+
+var gui = sandbox.gui({
+    title: "在线脚本商店",
+    elements: [
+        { type: "label", text: "点击「刷新」获取最新脚本列表" },
+        { type: "label", id: "status", text: "就绪", style: "color:#888;font-size:12px;" },
+        { type: "button", id: "refresh", text: "刷新列表" },
+        { type: "label", id: "listArea", text: "暂无数据", style: "white-space:pre-wrap;min-height:80px;border:1px solid #444;border-radius:6px;padding:8px;font-size:12px;" }
+    ]
+});
+
+var scriptEntries = [];
+
+gui.on("button:click", "refresh", async function() {
+    try {
+        gui.setValue("status", "加载中...");
+        scriptEntries = await fetchScriptList();
+        var lines = scriptEntries.map(function(s, i) {
+            return (i + 1) + ". " + s.name + " - " + s.author;
+        });
+        gui.setValue("listArea", lines.join("\n"));
+        gui.setValue("status", "共 " + scriptEntries.length + " 个脚本");
+
+        // 创建下载按钮区域
+        var btnArea = document.getElementById("__dl_buttons__");
+        if (btnArea) btnArea.remove();
+        btnArea = document.createElement("div");
+        btnArea.id = "__dl_buttons__";
+        btnArea.style.cssText = "margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;";
+
+        scriptEntries.forEach(function(entry) {
+            var btn = document.createElement("button");
+            btn.textContent = entry.name;
+            btn.style.cssText = "padding:8px 12px;border:none;border-radius:6px;background:#4a9eff;color:#fff;font-size:13px;cursor:pointer;";
+            btn.onclick = async function() {
+                try {
+                    btn.textContent = "...";
+                    btn.disabled = true;
+                    var code = await fetchScriptCode(entry.url);
+                    var ok = sandbox.saveScript(entry.name, code);
+                    if (ok) {
+                        sandbox.log("已保存: " + entry.name);
+                        btn.textContent = "已保存";
+                        btn.style.background = "#555";
+                    } else {
+                        sandbox.log("已存在: " + entry.name);
+                        btn.textContent = "已存在";
+                        btn.style.background = "#555";
+                    }
+                } catch (e) {
+                    sandbox.log("失败: " + entry.name + " - " + e.message);
+                    btn.textContent = "失败";
+                    btn.style.background = "#e04040";
+                    btn.disabled = false;
+                }
+            };
+            btnArea.appendChild(btn);
+        });
+
+        var allBtn = document.createElement("button");
+        allBtn.textContent = "全部下载";
+        allBtn.style.cssText = "padding:8px 12px;border:none;border-radius:6px;background:#e04040;color:#fff;font-size:13px;cursor:pointer;";
+        allBtn.onclick = async function() {
+            allBtn.disabled = true;
+            allBtn.textContent = "下载中...";
+            for (var i = 0; i < scriptEntries.length; i++) {
+                var entry = scriptEntries[i];
+                try {
+                    var code = await fetchScriptCode(entry.url);
+                    sandbox.saveScript(entry.name, code);
+                    sandbox.log("(" + (i+1) + "/" + scriptEntries.length + ") " + entry.name);
+                } catch (e) {}
+            }
+            allBtn.textContent = "完成";
+            allBtn.style.background = "#555";
+            sandbox.log("全部下载完成，请返回脚本页查看");
+        };
+        btnArea.appendChild(allBtn);
+
+        document.body.appendChild(btnArea);
+    } catch (e) {
+        gui.setValue("status", "加载失败: " + e.message);
+        sandbox.log("获取列表失败: " + e.message);
+    }
+});
+
+sandbox.log("请点击「刷新列表」开始");
+""".trimIndent()

@@ -3,10 +3,13 @@
 package com.bandkit.app
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -51,6 +54,12 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/** WebView 文件选择器回调存储 */
+object WebViewFileChooser {
+    var filePathCallback: ValueCallback<Array<android.net.Uri>>? = null
+    const val REQUEST_CODE = 1001
+}
 
 data class ConsoleEntry(
     val message: String,
@@ -405,7 +414,8 @@ var sandbox = {
         set: function(key, val) { ScriptBridge.storageSet(String(key), String(val)); },
         remove: function(key) { ScriptBridge.storageRemove(String(key)); },
         clear: function() { ScriptBridge.storageClear(); }
-    }
+    },
+    saveScript: function(name, content) { return ScriptBridge.saveScript(String(name), String(content)); }
 };
 var bandkit = sandbox;
 """.trimIndent()
@@ -420,6 +430,7 @@ class ScriptBridge(
     private val session: () -> DeviceSession?,
     private val onConsole: (String, String) -> Unit,
     private val onShowGui: () -> Unit = {},
+    private val appContext: android.content.Context? = null,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -559,6 +570,53 @@ class ScriptBridge(
     fun storageClear() {
         storage.clear()
     }
+
+    /**
+     * 保存脚本到 app 本地存储（SharedPreferences）
+     * @param name 脚本名称
+     * @param content 脚本内容
+     * @return true 保存成功
+     */
+    @JavascriptInterface
+    fun saveScript(name: String, content: String): Boolean {
+        val ctx = appContext ?: return false
+        return try {
+            val prefs = ctx.getSharedPreferences("bandkit_scripts", android.content.Context.MODE_PRIVATE)
+            val raw = prefs.getString("saved_scripts", null)
+            val list: MutableList<Map<String, Any>> = if (raw != null) {
+                org.json.JSONArray(raw).let { arr ->
+                    (0 until arr.length()).map { arr.getJSONObject(it).toMap() }.toMutableList()
+                }
+            } else {
+                mutableListOf()
+            }
+            // 跳过同名脚本
+            if (list.any { it["name"] == name }) return false
+            val id = "script_${currentTimeMillis()}_${(0..9999).random()}"
+            val now = currentTimeMillis()
+            val newEntry = mapOf(
+                "id" to id,
+                "name" to name,
+                "content" to content,
+                "createdAt" to now,
+                "updatedAt" to now,
+            )
+            list.add(newEntry)
+            val jsonArray = org.json.JSONArray()
+            list.forEach { jsonArray.put(org.json.JSONObject(it)) }
+            prefs.edit().putString("saved_scripts", jsonArray.toString()).apply()
+            true
+        } catch (e: Exception) {
+            mainHandler.post { onConsole("saveScript failed: ${e.message}", "error") }
+            false
+        }
+    }
+
+    private fun org.json.JSONObject.toMap(): Map<String, Any> {
+        val map = mutableMapOf<String, Any>()
+        keys().forEach { key -> map[key] = get(key) }
+        return map
+    }
 }
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -576,6 +634,7 @@ fun ScriptRunnerContent(
     val deviceAddr = session?.device?.addr ?: ""
     val authKey = session?.device?.authkey ?: ""
 
+    val context = androidx.compose.ui.platform.LocalContext.current
     val bridge = remember(session) {
         ScriptBridge(
             session = { session },
@@ -584,6 +643,7 @@ fun ScriptRunnerContent(
                 if (consoleLog.size > 200) consoleLog.removeLast()
             },
             onShowGui = { },
+            appContext = context.applicationContext,
         )
     }
 
@@ -691,10 +751,11 @@ fun ScriptRunnerContent(
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
-                    settings.allowFileAccess = false
-                    settings.allowContentAccess = false
+                    settings.allowFileAccess = true
+                    settings.allowContentAccess = true
                     settings.useWideViewPort = true
                     settings.loadWithOverviewMode = true
+                    settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
@@ -733,6 +794,33 @@ fun ScriptRunnerContent(
                         override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
                             msg?.let {
                                 bridge.log(it.message())
+                            }
+                            return true
+                        }
+
+                        override fun onShowFileChooser(
+                            webView: WebView?,
+                            filePathCallback: ValueCallback<Array<android.net.Uri>>?,
+                            fileChooserParams: FileChooserParams?,
+                        ): Boolean {
+                            // 取消之前的回调
+                            WebViewFileChooser.filePathCallback?.onReceiveValue(null)
+                            WebViewFileChooser.filePathCallback = filePathCallback
+
+                            val intent = fileChooserParams?.createIntent()
+                                ?: Intent(Intent.ACTION_GET_CONTENT).apply {
+                                    addCategory(Intent.CATEGORY_OPENABLE)
+                                    type = "*/*"
+                                    putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false)
+                                }
+
+                            try {
+                                (ctx as? Activity)?.startActivityForResult(intent, WebViewFileChooser.REQUEST_CODE)
+                                    ?: return false
+                            } catch (_: Exception) {
+                                WebViewFileChooser.filePathCallback?.onReceiveValue(null)
+                                WebViewFileChooser.filePathCallback = null
+                                return false
                             }
                             return true
                         }
