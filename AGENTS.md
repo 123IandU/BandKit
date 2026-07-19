@@ -100,7 +100,7 @@ Cargo 配置 `.cargo/config.toml` 指定 NDK 链接器路径。
 使用 WebView 执行 JavaScript 脚本，通过 `ScriptBridge`（`@JavascriptInterface`）桥接 Android JNI 设备通信。bandburg 兼容的 `sandbox.wasm.*` API。
 
 - `ScriptDoc.kt`（commonMain） — 脚本数据模型
-- `ScriptScreen.kt`（androidMain） — Scripta `CodeEditor` 编辑器 + 单文件模式 + 文件管理对话框 + 在线脚本商店（内嵌 JS）
+- `ScriptScreen.kt`（androidMain） — Scripta `CodeEditor` 编辑器 + 单文件模式 + 脚本管理对话框 + 在线脚本商店（内嵌 JS）
 - `ScriptRunnerScreen.kt`（androidMain） — 单 WebView（脚本执行 + GUI 渲染同一 DOM）+ ScriptBridge + 控制台输出
 - `ScriptRunnerActivity.kt`（androidApp） — 接收脚本代码 via Intent，启动 WebView 运行；处理文件选择器回调
 - `PlatformScriptScreen.kt`（commonMain + 平台 stub） — expect/actual 入口
@@ -148,6 +148,7 @@ Cargo 配置 `.cargo/config.toml` 指定 NDK 链接器路径。
 
 - `@JavascriptInterface` 方法在 WebView 后台线程执行 — 修改 Compose 状态必须通过 `Handler(Looper.getMainLooper()).post {}` 切到主线程，否则不会触发重组
 - WebView `<input type="file">` 需要 `WebChromeClient.onShowFileChooser` + Activity `onActivityResult` 回调
-- 内嵌在线脚本商店（`SCRIPT_STORE_CODE`）通过 `sandbox.saveScript()` 写入 SharedPreferences，脚本页通过 `LifecycleEventObserver ON_RESUME` 刷新列表
+- 内嵌在线脚本商店通过 assets `script_store.js` 加载，商店脚本通过 `sandbox.saveScript()` 写入 SharedPreferences，脚本页通过 `LifecycleEventObserver ON_RESUME` 刷新列表
+- WebView `loadDataWithBaseURL` 的 base URL 设为 `"https://bandkit.app"`（非 null），否则文档 origin 为 null 导致 `localStorage` 被安全策略拒绝。`domStorageEnabled` 已开启
 
 ## Notes
