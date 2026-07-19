@@ -59,7 +59,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.Delete
-import top.yukonga.miuix.kmp.icon.extended.Edit
+import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Import
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Play
@@ -89,12 +89,6 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
     val controller = rememberSaveableCodeEditorController(
         initialText = currentScript?.content ?: "",
     )
-
-    // 键盘可见时才显示符号快捷条
-    val density = androidx.compose.ui.platform.LocalDensity.current
-    val imeInsets = WindowInsets.ime
-    val isKeyboardVisible = imeInsets.getBottom(density) > 0
-    val editorSymbols = if (isKeyboardVisible) DefaultEditorSymbols else emptyList()
 
     // 加载脚本列表，打开第一个
     LaunchedEffect(Unit) {
@@ -228,11 +222,9 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                     Icon(MiuixIcons.Import, contentDescription = "导入JS文件", modifier = Modifier.size(20.dp))
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
-                // 文件管理
+                // 脚本管理
                 IconButton(onClick = { showFileManager = true }) {
-                    Icon(MiuixIcons.Edit, contentDescription = "文件管理", modifier = Modifier.size(20.dp))
+                    Icon(MiuixIcons.File, contentDescription = "脚本管理", modifier = Modifier.size(20.dp))
                 }
             }
 
@@ -255,12 +247,12 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                 CodeEditor(
                     controller = controller,
                     modifier = Modifier.fillMaxSize(),
-                    symbols = editorSymbols,
+                    symbols = DefaultEditorSymbols,
                 )
             }
         }
 
-        // 文件管理对话框
+        // 脚本管理对话框
         if (showFileManager) {
             Box(
                 modifier = Modifier
@@ -355,7 +347,8 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                                     @Suppress("UNCHECKED_CAST")
                                     val cls = Class.forName("com.bandkit.app.ScriptRunnerActivity") as Class<android.app.Activity>
                                     val intent = Intent(context, cls).apply {
-                                        putExtra(EXTRA_SCRIPT_CODE, SCRIPT_STORE_CODE)
+                                        val storeCode = context.assets.open("script_store.js").bufferedReader().readText()
+                                        putExtra(EXTRA_SCRIPT_CODE, storeCode)
                                         putExtra(EXTRA_DEVICE_ADDR, session?.device?.addr ?: "")
                                         putExtra(EXTRA_DEVICE_NAME, session?.device?.name ?: "")
                                         putExtra(EXTRA_AUTH_KEY, session?.device?.authkey ?: "")
@@ -538,110 +531,3 @@ const val EXTRA_SCRIPT_CODE = "script_code"
 const val EXTRA_DEVICE_ADDR = "device_addr"
 const val EXTRA_DEVICE_NAME = "device_name"
 const val EXTRA_AUTH_KEY = "auth_key"
-
-private val SCRIPT_STORE_CODE = """
-// 在线脚本商店
-sandbox.log("=== 在线脚本商店 ===");
-
-var INDEX_URL = "https://bandburgscript.02studio.xyz/scripts.json";
-
-async function fetchScriptList() {
-    sandbox.log("正在获取脚本列表...");
-    var resp = await fetch(INDEX_URL);
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    return await resp.json();
-}
-
-async function fetchScriptCode(url) {
-    var resp = await fetch(url);
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    return await resp.text();
-}
-
-var gui = sandbox.gui({
-    title: "在线脚本商店",
-    elements: [
-        { type: "label", text: "点击「刷新」获取最新脚本列表" },
-        { type: "label", id: "status", text: "就绪", style: "color:#888;font-size:12px;" },
-        { type: "button", id: "refresh", text: "刷新列表" },
-        { type: "label", id: "listArea", text: "暂无数据", style: "white-space:pre-wrap;min-height:80px;border:1px solid #444;border-radius:6px;padding:8px;font-size:12px;" }
-    ]
-});
-
-var scriptEntries = [];
-
-gui.on("button:click", "refresh", async function() {
-    try {
-        gui.setValue("status", "加载中...");
-        scriptEntries = await fetchScriptList();
-        var lines = scriptEntries.map(function(s, i) {
-            return (i + 1) + ". " + s.name + " - " + s.author;
-        });
-        gui.setValue("listArea", lines.join("\n"));
-        gui.setValue("status", "共 " + scriptEntries.length + " 个脚本");
-
-        // 创建下载按钮区域
-        var btnArea = document.getElementById("__dl_buttons__");
-        if (btnArea) btnArea.remove();
-        btnArea = document.createElement("div");
-        btnArea.id = "__dl_buttons__";
-        btnArea.style.cssText = "margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;";
-
-        scriptEntries.forEach(function(entry) {
-            var btn = document.createElement("button");
-            btn.textContent = entry.name;
-            btn.style.cssText = "padding:8px 12px;border:none;border-radius:6px;background:#4a9eff;color:#fff;font-size:13px;cursor:pointer;";
-            btn.onclick = async function() {
-                try {
-                    btn.textContent = "...";
-                    btn.disabled = true;
-                    var code = await fetchScriptCode(entry.url);
-                    var ok = sandbox.saveScript(entry.name, code);
-                    if (ok) {
-                        sandbox.log("已保存: " + entry.name);
-                        btn.textContent = "已保存";
-                        btn.style.background = "#555";
-                    } else {
-                        sandbox.log("已存在: " + entry.name);
-                        btn.textContent = "已存在";
-                        btn.style.background = "#555";
-                    }
-                } catch (e) {
-                    sandbox.log("失败: " + entry.name + " - " + e.message);
-                    btn.textContent = "失败";
-                    btn.style.background = "#e04040";
-                    btn.disabled = false;
-                }
-            };
-            btnArea.appendChild(btn);
-        });
-
-        var allBtn = document.createElement("button");
-        allBtn.textContent = "全部下载";
-        allBtn.style.cssText = "padding:8px 12px;border:none;border-radius:6px;background:#e04040;color:#fff;font-size:13px;cursor:pointer;";
-        allBtn.onclick = async function() {
-            allBtn.disabled = true;
-            allBtn.textContent = "下载中...";
-            for (var i = 0; i < scriptEntries.length; i++) {
-                var entry = scriptEntries[i];
-                try {
-                    var code = await fetchScriptCode(entry.url);
-                    sandbox.saveScript(entry.name, code);
-                    sandbox.log("(" + (i+1) + "/" + scriptEntries.length + ") " + entry.name);
-                } catch (e) {}
-            }
-            allBtn.textContent = "完成";
-            allBtn.style.background = "#555";
-            sandbox.log("全部下载完成，请返回脚本页查看");
-        };
-        btnArea.appendChild(allBtn);
-
-        document.body.appendChild(btnArea);
-    } catch (e) {
-        gui.setValue("status", "加载失败: " + e.message);
-        sandbox.log("获取列表失败: " + e.message);
-    }
-});
-
-sandbox.log("请点击「刷新列表」开始");
-""".trimIndent()
