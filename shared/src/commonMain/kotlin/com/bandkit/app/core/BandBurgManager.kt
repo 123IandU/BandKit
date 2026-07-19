@@ -15,6 +15,7 @@ expect class BandBurgManager {
         addr: String,
         authkey: String,
         connectType: Int,
+        sarVersion: Int = 2,
     ): DeviceSession
 
     fun disconnect(session: DeviceSession)

@@ -4,7 +4,6 @@ package com.bandkit.app.core
 
 import android.content.Context
 import android.util.Log
-import com.bandkit.app.core.NativeDevice
 import com.bandkit.app.models.DeviceInfo
 import com.bandkit.app.models.DeviceSession
 import com.bandkit.app.models.InstalledApp
@@ -47,13 +46,14 @@ actual class BandBurgManager {
         addr: String,
         authkey: String,
         connectType: Int,
+        sarVersion: Int,
     ): DeviceSession = withContext(Dispatchers.IO) {
         Log.d(TAG, "Connecting to $addr via NativeDevice")
         val result = NativeDevice.deviceConnect(
             name = name,
             addr = addr,
             authkey = authkey,
-            sarVersion = 2L,
+            sarVersion = sarVersion.toLong(),
             connectType = if (connectType == 1) "BLE" else "SPP",
             txWinOverrunAllowance = byteArrayOf(8),
         )

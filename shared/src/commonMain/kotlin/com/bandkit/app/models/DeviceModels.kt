@@ -45,11 +45,6 @@ enum class LogType { INFO, SUCCESS, ERROR, WARNING }
 
 enum class ConnectionStatus { DISCONNECTED, CONNECTING, CONNECTED }
 
-enum class ConnectType(val value: Int) {
-    SPP(0),
-    BLE(1),
-}
-
 data class DeviceSession(
     val handle: Long,
     val device: SavedDevice,

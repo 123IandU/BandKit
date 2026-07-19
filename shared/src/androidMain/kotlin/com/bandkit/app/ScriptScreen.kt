@@ -11,12 +11,19 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
@@ -56,8 +63,11 @@ import top.yukonga.miuix.kmp.icon.extended.Edit
 import top.yukonga.miuix.kmp.icon.extended.Import
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Play
+import top.yukonga.miuix.kmp.icon.extended.Redo
+import top.yukonga.miuix.kmp.icon.extended.Undo
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.scripta.editor.CodeEditor
+import top.yukonga.scripta.editor.DefaultEditorSymbols
 import top.yukonga.scripta.editor.rememberSaveableCodeEditorController
 
 private const val PREFS_NAME = "bandkit_scripts"
@@ -79,6 +89,12 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
     val controller = rememberSaveableCodeEditorController(
         initialText = currentScript?.content ?: "",
     )
+
+    // 键盘可见时才显示符号快捷条
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val imeInsets = WindowInsets.ime
+    val isKeyboardVisible = imeInsets.getBottom(density) > 0
+    val editorSymbols = if (isKeyboardVisible) DefaultEditorSymbols else emptyList()
 
     // 加载脚本列表，打开第一个
     LaunchedEffect(Unit) {
@@ -118,9 +134,44 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // 撤销
+                IconButton(
+                    onClick = { controller.undo() },
+                    enabled = controller.canUndo,
+                ) {
+                    Icon(
+                        MiuixIcons.Undo,
+                        contentDescription = "撤销",
+                        modifier = Modifier.size(18.dp),
+                        tint = if (controller.canUndo) {
+                            MiuixTheme.colorScheme.onSurface
+                        } else {
+                            MiuixTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                        },
+                    )
+                }
+                // 重做
+                IconButton(
+                    onClick = { controller.redo() },
+                    enabled = controller.canRedo,
+                ) {
+                    Icon(
+                        MiuixIcons.Redo,
+                        contentDescription = "重做",
+                        modifier = Modifier.size(18.dp),
+                        tint = if (controller.canRedo) {
+                            MiuixTheme.colorScheme.primary
+                        } else {
+                            MiuixTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                        },
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
                 // 保存
                 IconButton(onClick = {
                     val script = currentScript ?: return@IconButton
@@ -131,6 +182,7 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                     val idx = scripts.indexOfFirst { it.id == script.id }
                     if (idx >= 0) scripts[idx] = updated
                     currentScript = updated
+                    controller.markSaved(controller.documentVersion)
                     saveScripts(context, scripts.toList())
                 }) {
                     Icon(MiuixIcons.Ok, contentDescription = "保存", modifier = Modifier.size(20.dp))
@@ -151,6 +203,9 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                 }) {
                     Icon(MiuixIcons.Play, contentDescription = "运行", modifier = Modifier.size(20.dp))
                 }
+
+                Spacer(modifier = Modifier.weight(1f))
+
                 // 新建
                 IconButton(onClick = { showNewDialog = true }) {
                     Icon(MiuixIcons.Add, contentDescription = "新建脚本", modifier = Modifier.size(20.dp))
@@ -200,6 +255,7 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                 CodeEditor(
                     controller = controller,
                     modifier = Modifier.fillMaxSize(),
+                    symbols = editorSymbols,
                 )
             }
         }

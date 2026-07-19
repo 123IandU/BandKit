@@ -13,6 +13,10 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -49,17 +53,13 @@ import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-
-/** WebView 文件选择器回调存储 */
-object WebViewFileChooser {
-    var filePathCallback: ValueCallback<Array<android.net.Uri>>? = null
-    const val REQUEST_CODE = 1001
-}
 
 data class ConsoleEntry(
     val message: String,
@@ -627,6 +627,7 @@ fun ScriptRunnerContent(
     modifier: Modifier = Modifier,
 ) {
     var isRunning by remember { mutableStateOf(false) }
+    var showConsole by remember { mutableStateOf(true) }
     val consoleLog = remember { mutableStateListOf<ConsoleEntry>() }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
@@ -654,94 +655,52 @@ fun ScriptRunnerContent(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Button(
-                onClick = {
-                    if (isRunning) {
-                        webView?.evaluateJavascript("window.stop();", null)
-                        isRunning = false
-                        consoleLog.add(0, ConsoleEntry("脚本已停止", "info"))
-                    } else {
-                        consoleLog.clear()
-                        consoleLog.add(0, ConsoleEntry("运行脚本...", "info"))
-                        isRunning = true
-                        val wv = webView
-                        if (wv != null) {
-                            val bridgeJs = buildJsBridge(deviceName, deviceAddr, authKey)
-                            wv.evaluateJavascript(bridgeJs, null)
-                            wv.evaluateJavascript(
-                                """
-                                (async function() {
-                                    try {
-                                        $scriptCode
-                                    } catch(e) {
-                                        sandbox.error(e.toString() + '\\n' + (e.stack || ''));
-                                    }
-                                })();
-                                """.trimIndent(),
-                                null,
-                            )
-                        } else {
-                            consoleLog.add(0, ConsoleEntry("WebView 未就绪", "error"))
-                            isRunning = false
-                        }
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                colors = if (isRunning) {
-                    ButtonDefaults.buttonColors(color = MiuixTheme.colorScheme.error)
+            // 运行/停止
+            IconButton(onClick = {
+                if (isRunning) {
+                    webView?.evaluateJavascript("window.stop();", null)
+                    isRunning = false
+                    consoleLog.add(0, ConsoleEntry("脚本已停止", "info"))
                 } else {
-                    ButtonDefaults.buttonColorsPrimary()
-                },
-            ) {
-                Icon(
-                    imageVector = if (isRunning) MiuixIcons.Refresh else MiuixIcons.Play,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(if (isRunning) "停止" else "运行")
-            }
-            Button(onClick = { consoleLog.clear() }) {
-                Text("清空")
-            }
-        }
-
-        // Console output
-        Card(
-            modifier = Modifier.fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 4.dp)
-                .weight(0.3f),
-        ) {
-            Column(modifier = Modifier.padding(8.dp)) {
-                Text(
-                    text = "控制台",
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    state = rememberLazyListState(),
-                ) {
-                    items(consoleLog) { entry ->
-                        val color = when (entry.level) {
-                            "error" -> MiuixTheme.colorScheme.error
-                            "warn" -> Color(0xFFFF9800)
-                            "info" -> MiuixTheme.colorScheme.primary
-                            else -> MiuixTheme.colorScheme.onSurface
-                        }
-                        SelectionContainer {
-                            Text(
-                                text = "[${entry.level.uppercase()}] ${entry.message}",
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = color,
-                                lineHeight = 14.sp,
-                                modifier = Modifier.padding(vertical = 1.dp),
-                            )
-                        }
+                    consoleLog.clear()
+                    consoleLog.add(0, ConsoleEntry("运行脚本...", "info"))
+                    isRunning = true
+                    val wv = webView
+                    if (wv != null) {
+                        val bridgeJs = buildJsBridge(deviceName, deviceAddr, authKey)
+                        wv.evaluateJavascript(bridgeJs, null)
+                        wv.evaluateJavascript(
+                            """
+                            (async function() {
+                                try {
+                                    $scriptCode
+                                } catch(e) {
+                                    sandbox.error(e.toString() + '\\n' + (e.stack || ''));
+                                }
+                            })();
+                            """.trimIndent(),
+                            null,
+                        )
+                    } else {
+                        consoleLog.add(0, ConsoleEntry("WebView 未就绪", "error"))
+                        isRunning = false
                     }
                 }
+            }) {
+                Icon(
+                    imageVector = if (isRunning) MiuixIcons.Refresh else MiuixIcons.Play,
+                    contentDescription = if (isRunning) "停止" else "运行",
+                    modifier = Modifier.size(20.dp),
+                    tint = if (isRunning) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.primary,
+                )
+            }
+            // 清空控制台
+            IconButton(onClick = { consoleLog.clear() }) {
+                Icon(
+                    MiuixIcons.Delete,
+                    contentDescription = "清空控制台",
+                    modifier = Modifier.size(20.dp),
+                )
             }
         }
 
@@ -803,7 +762,6 @@ fun ScriptRunnerContent(
                             filePathCallback: ValueCallback<Array<android.net.Uri>>?,
                             fileChooserParams: FileChooserParams?,
                         ): Boolean {
-                            // 取消之前的回调
                             WebViewFileChooser.filePathCallback?.onReceiveValue(null)
                             WebViewFileChooser.filePathCallback = filePathCallback
 
@@ -836,7 +794,82 @@ fun ScriptRunnerContent(
                     )
                 }
             },
-            modifier = Modifier.fillMaxWidth().weight(0.7f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(if (showConsole) 0.6f else 1f),
         )
+
+        // 可折叠控制台
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showConsole = !showConsole }
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (showConsole) "\u25bc" else "\u25b6",
+                fontSize = 10.sp,
+                color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "控制台",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = MiuixTheme.colorScheme.onSurface,
+            )
+            if (consoleLog.isNotEmpty()) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "(${consoleLog.size})",
+                    fontSize = 11.sp,
+                    color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showConsole,
+            enter = expandVertically(),
+            exit = shrinkVertically(),
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .height(160.dp),
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                    state = rememberLazyListState(),
+                ) {
+                    items(consoleLog) { entry ->
+                        val color = when (entry.level) {
+                            "error" -> MiuixTheme.colorScheme.error
+                            "warn" -> Color(0xFFFF9800)
+                            "info" -> MiuixTheme.colorScheme.primary
+                            else -> MiuixTheme.colorScheme.onSurface
+                        }
+                        SelectionContainer {
+                            Text(
+                                text = "[${entry.level.uppercase()}] ${entry.message}",
+                                fontSize = 11.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = color,
+                                lineHeight = 14.sp,
+                                modifier = Modifier.padding(vertical = 1.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
+}
+
+/** WebView 文件选择器回调存储 */
+object WebViewFileChooser {
+    var filePathCallback: ValueCallback<Array<android.net.Uri>>? = null
+    const val REQUEST_CODE = 1001
 }
