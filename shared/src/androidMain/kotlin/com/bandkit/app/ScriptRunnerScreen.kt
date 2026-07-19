@@ -30,8 +30,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -62,10 +62,13 @@ import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 data class ConsoleEntry(
+    val id: Long,
     val message: String,
     val level: String = "log",
     val timestamp: Long = currentTimeMillis(),
 )
+
+private val consoleIdCounter = java.util.concurrent.atomic.AtomicLong(0)
 
 private fun jsonEscape(s: String): String {
     val escaped = s.replace("\\", "\\\\")
@@ -116,13 +119,13 @@ var sandbox = {
     log: _log,
     warn: _warn,
     error: _error,
-    currentDevice: _deviceAddr ? {
+    currentDevice: {
         name: _deviceName,
         addr: _deviceAddr,
-        type: 2,
-        transport: 'SPP',
+        type: _deviceAddr ? 2 : 0,
+        transport: _deviceAddr ? 'SPP' : '',
         authKey: ${jsonEscape(authKey)}
-    } : null,
+    },
     devices: _deviceAddr ? [{ name: _deviceName, addr: _deviceAddr }] : [],
     activeGUI: null,
     utils: {
@@ -183,7 +186,7 @@ var sandbox = {
         _log('[GUI] 创建界面: ' + (config.title || ''));
 
         // 直接替换 body 内容渲染 GUI（Android WebView 不支持 position:fixed）
-        document.body.style.cssText = 'margin:0;padding:12px;background:#1e1e1e;color:#e0e0e0;font-family:system-ui,sans-serif;font-size:14px;overflow-y:auto;';
+        document.body.style.cssText = 'margin:0;padding:12px;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;font-size:14px;overflow-y:auto;';
         document.body.innerHTML = '';
 
         // 标题栏
@@ -191,11 +194,11 @@ var sandbox = {
         titleBar.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;';
         var title = document.createElement('h3');
         title.textContent = config.title || 'GUI';
-        title.style.cssText = 'color:#e0e0e0;margin:0;font-size:16px;';
+        title.style.cssText = 'color:var(--text);margin:0;font-size:16px;';
         titleBar.appendChild(title);
         var closeBtn = document.createElement('button');
         closeBtn.innerHTML = '&times;';
-        closeBtn.style.cssText = 'background:none;border:none;color:#aaa;font-size:24px;cursor:pointer;padding:0 4px;';
+        closeBtn.style.cssText = 'background:none;border:none;color:var(--text-muted);font-size:24px;cursor:pointer;padding:0 4px;';
         closeBtn.onclick = function() { controller.close(); };
         titleBar.appendChild(closeBtn);
         document.body.appendChild(titleBar);
@@ -223,7 +226,7 @@ var sandbox = {
                     var label = document.createElement('div');
                     label.id = elementId;
                     label.textContent = element.text;
-                    label.style.cssText = 'padding:8px;border:1px solid #555;border-radius:8px;margin-bottom:8px;color:#e0e0e0;' + (element.style || '');
+                    label.style.cssText = 'padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;color:var(--text);' + (element.style || '');
                     container.appendChild(label);
                     elements[elementId] = label;
                     values[elementId] = element.text;
@@ -233,7 +236,7 @@ var sandbox = {
                     if (element.label) {
                         var inputLabel = document.createElement('label');
                         inputLabel.textContent = element.label;
-                        inputLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:#aaa;font-size:13px;';
+                        inputLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:var(--text-muted);font-size:13px;';
                         container.appendChild(inputLabel);
                     }
                     var input = document.createElement('input');
@@ -241,7 +244,7 @@ var sandbox = {
                     input.id = elementId;
                     input.placeholder = element.placeholder || '';
                     input.value = element.value || '';
-                    input.style.cssText = 'width:100%;padding:8px;border:1px solid #555;border-radius:6px;background:#1e1e1e;color:#e0e0e0;font-size:14px;box-sizing:border-box;margin-bottom:8px;';
+                    input.style.cssText = 'width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:14px;box-sizing:border-box;margin-bottom:8px;';
                     input.addEventListener('change', function() {
                         values[elementId] = input.value;
                         var listeners = eventListeners['input:change'][elementId];
@@ -256,14 +259,14 @@ var sandbox = {
                     if (element.label) {
                         var taLabel = document.createElement('label');
                         taLabel.textContent = element.label;
-                        taLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:#aaa;font-size:13px;';
+                        taLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:var(--text-muted);font-size:13px;';
                         container.appendChild(taLabel);
                     }
                     var textarea = document.createElement('textarea');
                     textarea.id = elementId;
                     textarea.placeholder = element.placeholder || '';
                     textarea.value = element.value || '';
-                    textarea.style.cssText = 'width:100%;padding:8px;border:1px solid #555;border-radius:6px;background:#1e1e1e;color:#e0e0e0;font-size:14px;min-height:60px;resize:vertical;box-sizing:border-box;margin-bottom:8px;';
+                    textarea.style.cssText = 'width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:14px;min-height:60px;resize:vertical;box-sizing:border-box;margin-bottom:8px;';
                     textarea.addEventListener('change', function() {
                         values[elementId] = textarea.value;
                         var listeners = eventListeners['input:change'][elementId];
@@ -278,12 +281,12 @@ var sandbox = {
                     if (element.label) {
                         var sLabel = document.createElement('label');
                         sLabel.textContent = element.label;
-                        sLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:#aaa;font-size:13px;';
+                        sLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:var(--text-muted);font-size:13px;';
                         container.appendChild(sLabel);
                     }
                     var select = document.createElement('select');
                     select.id = elementId;
-                    select.style.cssText = 'width:100%;padding:8px;border:1px solid #555;border-radius:6px;background:#1e1e1e;color:#e0e0e0;font-size:14px;box-sizing:border-box;margin-bottom:8px;';
+                    select.style.cssText = 'width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:14px;box-sizing:border-box;margin-bottom:8px;';
                     (element.options || []).forEach(function(opt) {
                         var optionEl = document.createElement('option');
                         optionEl.value = opt.value;
@@ -305,7 +308,7 @@ var sandbox = {
                     var button = document.createElement('button');
                     button.textContent = element.text || '按钮';
                     button.id = elementId;
-                    button.style.cssText = 'width:100%;padding:10px;border:none;border-radius:8px;background:#4a9eff;color:#fff;font-size:14px;cursor:pointer;margin-bottom:8px;';
+                    button.style.cssText = 'width:100%;padding:10px;border:none;border-radius:8px;background:var(--button-bg);color:var(--button-text);font-size:14px;cursor:pointer;margin-bottom:8px;';
                     button.addEventListener('click', function() {
                         var listeners = eventListeners['button:click'][elementId];
                         if (listeners) listeners.forEach(function(cb) { cb(); });
@@ -320,14 +323,14 @@ var sandbox = {
                     if (element.label) {
                         var fLabel = document.createElement('label');
                         fLabel.textContent = element.label;
-                        fLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:#aaa;font-size:13px;';
+                        fLabel.style.cssText = 'display:block;margin-bottom:4px;font-weight:bold;color:var(--text-muted);font-size:13px;';
                         container.appendChild(fLabel);
                     }
                     var fileInput = document.createElement('input');
                     fileInput.type = 'file';
                     fileInput.id = elementId;
                     if (element.accept) fileInput.accept = element.accept;
-                    fileInput.style.cssText = 'width:100%;padding:8px;border:1px solid #555;border-radius:6px;background:#1e1e1e;color:#e0e0e0;font-size:14px;box-sizing:border-box;margin-bottom:8px;';
+                    fileInput.style.cssText = 'width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:14px;box-sizing:border-box;margin-bottom:8px;';
                     fileInput.addEventListener('change', function(e) {
                         var file = e.target.files && e.target.files[0];
                         if (file) {
@@ -357,7 +360,7 @@ var sandbox = {
                     container.appendChild(fileInput);
                     var fileInfo = document.createElement('div');
                     fileInfo.id = '__file_info_' + elementId + '__';
-                    fileInfo.style.cssText = 'color:#888;font-size:12px;margin-bottom:8px;';
+                    fileInfo.style.cssText = 'color:var(--info-text);font-size:12px;margin-bottom:8px;';
                     fileInfo.textContent = element.value || '未选择文件';
                     container.appendChild(fileInfo);
                     elements[elementId] = fileInput;
@@ -391,7 +394,7 @@ var sandbox = {
             },
             close: function() {
                 document.body.innerHTML = '';
-                document.body.style.cssText = 'margin:0;padding:0;background:#1e1e1e;';
+                document.body.style.cssText = 'margin:0;padding:0;background:var(--bg);';
                 if (sandbox.activeGUI === controller) sandbox.activeGUI = null;
                 if (_activeGUI === controller) _activeGUI = null;
                 _log('[GUI] 窗口关闭');
@@ -418,6 +421,27 @@ var sandbox = {
     saveScript: function(name, content) { return ScriptBridge.saveScript(String(name), String(content)); }
 };
 var bandkit = sandbox;
+
+// ===== 主题同步（从 Kotlin 检测系统深色/浅色模式）=====
+var _lastThemeMode = ScriptBridge.getThemeMode();
+var _themes = {
+    light: { '--bg':'#ffffff', '--text':'#333333', '--text-muted':'#666666', '--border':'#dddddd', '--button-bg':'#4a9eff', '--button-text':'#ffffff', '--info-text':'#999999' },
+    dark:  { '--bg':'#1e1e1e', '--text':'#e0e0e0', '--text-muted':'#aaaaaa', '--border':'#555555', '--button-bg':'#4a9eff', '--button-text':'#ffffff', '--info-text':'#888888' }
+};
+function _applyTheme(mode) {
+    var vars = _themes[mode] || _themes.light;
+    var root = document.documentElement;
+    for (var k in vars) root.style.setProperty(k, vars[k]);
+}
+_applyTheme(_lastThemeMode);
+setInterval(function() {
+    var mode = ScriptBridge.getThemeMode();
+    if (mode !== _lastThemeMode) {
+        _lastThemeMode = mode;
+        _applyTheme(mode);
+        _log('[主题] 切换为' + (mode === 'dark' ? '深色' : '浅色') + '模式');
+    }
+}, 2000);
 """.trimIndent()
 
 /**
@@ -550,6 +574,14 @@ class ScriptBridge(
     @JavascriptInterface
     fun renderGui(configJson: String) = mainHandler.post { onShowGui() }
 
+    @JavascriptInterface
+    fun getThemeMode(): String {
+        val ctx = appContext ?: return "light"
+        val nightMode = ctx.resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        return if (nightMode == android.content.res.Configuration.UI_MODE_NIGHT_YES) "dark" else "light"
+    }
+
     // Storage — 内存级
     private val storage = mutableMapOf<String, String>()
 
@@ -629,6 +661,19 @@ fun ScriptRunnerContent(
     var isRunning by remember { mutableStateOf(false) }
     var showConsole by remember { mutableStateOf(true) }
     val consoleLog = remember { mutableStateListOf<ConsoleEntry>() }
+    val consoleBuffer = remember { mutableListOf<ConsoleEntry>() }
+    val flushHandler = remember { Handler(Looper.getMainLooper()) }
+    val flushRunnable = remember {
+        Runnable {
+            if (consoleBuffer.isNotEmpty()) {
+                consoleLog.addAll(consoleBuffer)
+                consoleBuffer.clear()
+            }
+            while (consoleLog.size > 200) {
+                consoleLog.removeFirst()
+            }
+        }
+    }
     var webView by remember { mutableStateOf<WebView?>(null) }
 
     val deviceName = session?.device?.name ?: ""
@@ -640,8 +685,9 @@ fun ScriptRunnerContent(
         ScriptBridge(
             session = { session },
             onConsole = { msg, level ->
-                consoleLog.add(0, ConsoleEntry(msg, level))
-                if (consoleLog.size > 200) consoleLog.removeLast()
+                consoleBuffer.add(ConsoleEntry(consoleIdCounter.incrementAndGet(), msg, level))
+                flushHandler.removeCallbacks(flushRunnable)
+                flushHandler.postDelayed(flushRunnable, 33L)
             },
             onShowGui = { },
             appContext = context.applicationContext,
@@ -660,10 +706,10 @@ fun ScriptRunnerContent(
                 if (isRunning) {
                     webView?.evaluateJavascript("window.stop();", null)
                     isRunning = false
-                    consoleLog.add(0, ConsoleEntry("脚本已停止", "info"))
+                    consoleLog.add(ConsoleEntry(consoleIdCounter.incrementAndGet(), "脚本已停止", "info"))
                 } else {
                     consoleLog.clear()
-                    consoleLog.add(0, ConsoleEntry("运行脚本...", "info"))
+                    consoleLog.add(ConsoleEntry(consoleIdCounter.incrementAndGet(), "运行脚本...", "info"))
                     isRunning = true
                     val wv = webView
                     if (wv != null) {
@@ -682,7 +728,7 @@ fun ScriptRunnerContent(
                             null,
                         )
                     } else {
-                        consoleLog.add(0, ConsoleEntry("WebView 未就绪", "error"))
+                        consoleLog.add(ConsoleEntry(consoleIdCounter.incrementAndGet(), "WebView 未就绪", "error"))
                         isRunning = false
                     }
                 }
@@ -716,6 +762,13 @@ fun ScriptRunnerContent(
                     settings.loadWithOverviewMode = true
                     settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        settings.isAlgorithmicDarkeningAllowed = true
+                    } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        @Suppress("DEPRECATION")
+                        settings.forceDark = android.webkit.WebSettings.FORCE_DARK_AUTO
+                    }
+
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView?, url: String?) {
                             super.onPageFinished(view, url)
@@ -725,6 +778,7 @@ fun ScriptRunnerContent(
                             consoleLog.add(
                                 0,
                                 ConsoleEntry(
+                                    consoleIdCounter.incrementAndGet(),
                                     "脚本引擎就绪" + if (deviceAddr.isNotEmpty()) "（设备: $deviceName）" else "（无设备）",
                                     "info",
                                 ),
@@ -786,8 +840,8 @@ fun ScriptRunnerContent(
 
                     addJavascriptInterface(bridge, "ScriptBridge")
                     loadDataWithBaseURL(
-                        null,
-                        """<html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"></head><body style="background:#1e1e1e;color:#e0e0e0;font-family:system-ui,sans-serif;margin:0;padding:0;"></body></html>""",
+                        "https://bandkit.app",
+                        """<html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><link rel="icon" href="data:,"><style>:root{--bg:#ffffff;--text:#333333;--text-muted:#666666;--border:#dddddd;--button-bg:#4a9eff;--button-text:#ffffff;--info-text:#999999}@media(prefers-color-scheme:dark){:root{--bg:#1e1e1e;--text:#e0e0e0;--text-muted:#aaaaaa;--border:#555555;--button-bg:#4a9eff;--button-text:#ffffff;--info-text:#888888}}</style></head><body style="background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;margin:0;padding:0;"></body></html>""",
                         "text/html",
                         "UTF-8",
                         null,
@@ -840,27 +894,30 @@ fun ScriptRunnerContent(
                     .padding(horizontal = 8.dp)
                     .height(160.dp),
             ) {
+                val listState = rememberLazyListState()
+                LaunchedEffect(consoleLog.size) {
+                    if (consoleLog.isNotEmpty()) listState.animateScrollToItem(consoleLog.lastIndex)
+                }
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(8.dp),
-                    state = rememberLazyListState(),
+                    state = listState,
+                    reverseLayout = true,
                 ) {
-                    items(consoleLog) { entry ->
+                    items(consoleLog, key = { it.id }) { entry ->
                         val color = when (entry.level) {
                             "error" -> MiuixTheme.colorScheme.error
                             "warn" -> Color(0xFFFF9800)
                             "info" -> MiuixTheme.colorScheme.primary
                             else -> MiuixTheme.colorScheme.onSurface
                         }
-                        SelectionContainer {
-                            Text(
-                                text = "[${entry.level.uppercase()}] ${entry.message}",
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = color,
-                                lineHeight = 14.sp,
-                                modifier = Modifier.padding(vertical = 1.dp),
-                            )
-                        }
+                        Text(
+                            text = "[${entry.level.uppercase()}] ${entry.message}",
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = color,
+                            lineHeight = 14.sp,
+                            modifier = Modifier.padding(vertical = 1.dp),
+                        )
                     }
                 }
             }
