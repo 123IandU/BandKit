@@ -20,7 +20,7 @@
 
 - **UI**: Kotlin Multiplatform Compose (Miuix UI)
 - **协议层**: Rust + JNI (libbandkit_app_android.so)
-- **平台**: Android (minSdk 23, targetSdk 37)
+- **平台**: Android (minSdk 24, targetSdk 37)
 
 ## 构建
 
