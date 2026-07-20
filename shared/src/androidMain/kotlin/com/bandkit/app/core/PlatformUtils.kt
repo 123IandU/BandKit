@@ -16,7 +16,11 @@ import kotlin.coroutines.suspendCoroutine
 
 actual val IO: CoroutineDispatcher = Dispatchers.IO
 
-actual fun formatTimestamp(timestamp: Long): String = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
+private val timestampFormatter = object : ThreadLocal<SimpleDateFormat>() {
+    override fun initialValue() = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+}
+
+actual fun formatTimestamp(timestamp: Long): String = timestampFormatter.get()!!.format(Date(timestamp))
 
 actual fun currentTimeMillis(): Long = System.currentTimeMillis()
 
