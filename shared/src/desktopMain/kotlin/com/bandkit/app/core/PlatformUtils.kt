@@ -28,3 +28,5 @@ actual fun saveShowLogs(context: Any, value: Boolean) {}
 actual suspend fun exportSavedDevicesToFile(context: Any, devices: List<SavedDevice>): Boolean = false
 
 actual suspend fun importSavedDevicesFromFile(context: Any): List<SavedDevice>? = null
+
+actual fun extractFileIdentifier(fileName: String, fileData: ByteArray): String? = null

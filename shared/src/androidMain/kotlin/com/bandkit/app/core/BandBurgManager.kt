@@ -4,6 +4,7 @@ package com.bandkit.app.core
 
 import android.content.Context
 import android.util.Log
+import com.bandkit.app.formatFileSize
 import com.bandkit.app.models.DeviceInfo
 import com.bandkit.app.models.DeviceSession
 import com.bandkit.app.models.InstalledApp
@@ -190,12 +191,22 @@ actual class BandBurgManager {
         return try {
             Log.d(
                 TAG,
-                "Installing file: $fileName (type=$resType, size=${fileData.size})" +
+                "Installing file: $fileName (type=$resType, size=${formatFileSize(fileData.size)})" +
                     if (resolvedPackageName != null) ", pkg=$resolvedPackageName" else "",
             )
             onProgress(0f)
 
             Log.d(TAG, "installFile: calling NativeDevice.deviceInstall (addr=$addr, resType=${resType.toByte()})...")
+            // 表盘先尝试从 .bin 文件提取 ID，否则用 MD5 哈希生成
+            val installWatchfaceId = if (resType == 16) {
+                extractWatchfaceIdFromFile(fileData) ?: run {
+                    val md = java.security.MessageDigest.getInstance("MD5")
+                    md.update(fileData)
+                    val hash = md.digest()
+                    val num = hash.take(6).fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xFF) } % 1_000_000_000_000L
+                    "%012d".format(num)
+                }
+            } else null
             val result = withContext(Dispatchers.IO) {
                 NativeDevice.deviceInstall(
                     addr = addr,
@@ -213,7 +224,7 @@ actual class BandBurgManager {
                             }
                         }
                     },
-                    watchfaceId = null,
+                    watchfaceId = installWatchfaceId,
                 )
             }
             Log.d(TAG, "installFile: NativeDevice.deviceInstall returned: $result")
@@ -229,6 +240,29 @@ actual class BandBurgManager {
             Log.e(TAG, "installFile threw exception for: $fileName", e)
             false
         }
+    }
+
+    /**
+     * 从 .bin 文件元数据中提取表盘 ID（与 corelib resutils::get_watchface_id 逻辑一致）
+     * 默认偏移 34，字段长度 24，扫描 9 或 12 位字母数字段
+     */
+    private fun extractWatchfaceIdFromFile(fileData: ByteArray): String? {
+        val offset = 34
+        val fieldLen = 24
+        if (fileData.size < offset + fieldLen) return null
+        val field = fileData.copyOfRange(offset, offset + fieldLen)
+        var i = 0
+        while (i < fieldLen) {
+            val c = field[i].toInt().toChar()
+            if (!c.isLetterOrDigit()) { i++; continue }
+            val start = i
+            while (i < fieldLen && field[i].toInt().toChar().isLetterOrDigit()) i++
+            val runLen = i - start
+            if (runLen == 9 || runLen == 12) {
+                return field.copyOfRange(start, i).decodeToString().take(runLen)
+            }
+        }
+        return null
     }
 
     actual fun processReceivedData(session: DeviceSession, data: ByteArray): String = ""

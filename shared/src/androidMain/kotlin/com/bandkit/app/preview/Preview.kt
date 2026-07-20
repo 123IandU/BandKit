@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.bandkit.app.preview
 
+import com.bandkit.app.formatFileSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -406,7 +407,7 @@ private fun PreviewInstallSection() {
                         Spacer(modifier = Modifier.height(8.dp))
                         Button(onClick = {}, modifier = Modifier.fillMaxWidth()) { Text("选择文件") }
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("watchface_v1.bin (24576 字节)", fontSize = 13.sp)
+                        Text("watchface_v1.bin (${formatFileSize(24576)})", fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(8.dp))
                         Button(
                             onClick = {},

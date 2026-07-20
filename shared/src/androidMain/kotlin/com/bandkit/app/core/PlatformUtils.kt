@@ -53,6 +53,47 @@ actual fun saveShowLogs(context: Any, value: Boolean) {
     prefs.edit().putBoolean("show_logs", value).apply()
 }
 
+actual fun extractFileIdentifier(fileName: String, fileData: ByteArray): String? {
+    return if (fileName.endsWith(".rpk", true)) {
+        // 从 RPK 的 manifest.json 中提取 package 字段
+        try {
+            val zis = java.util.zip.ZipInputStream(fileData.inputStream())
+            var entry = zis.nextEntry
+            while (entry != null) {
+                if (entry.name.contains("manifest.json")) {
+                    val jsonStr = zis.readBytes().decodeToString()
+                    zis.closeEntry()
+                    zis.close()
+                    // 简单 JSON 解析提取 package 字段
+                    val pkgRegex = Regex(""""package"\s*:\s*"([^"]+)"""")
+                    return pkgRegex.find(jsonStr)?.groupValues?.get(1)
+                }
+                zis.closeEntry()
+                entry = zis.nextEntry
+            }
+            zis.close()
+            null
+        } catch (_: Exception) {
+            null
+        }
+    } else if (fileName.endsWith(".bin", true)) {
+        // 从 .bin 文件 offset=34, field_len=24 中扫描 9/12 位 ID
+        val offset = 34; val fieldLen = 24
+        if (fileData.size < offset + fieldLen) return null
+        val field = fileData.copyOfRange(offset, offset + fieldLen)
+        var i = 0
+        while (i < fieldLen) {
+            val c = field[i].toInt().toChar()
+            if (!c.isLetterOrDigit()) { i++; continue }
+            val start = i
+            while (i < fieldLen && field[i].toInt().toChar().isLetterOrDigit()) i++
+            val runLen = i - start
+            if (runLen == 9 || runLen == 12) return field.copyOfRange(start, i).decodeToString().take(runLen)
+        }
+        null
+    } else null
+}
+
 object DeviceExportImportState {
     var pendingExportResult: ((Boolean) -> Unit)? = null
     var pendingImportResult: ((List<SavedDevice>?) -> Unit)? = null

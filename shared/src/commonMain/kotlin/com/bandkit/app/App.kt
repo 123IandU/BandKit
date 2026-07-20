@@ -55,6 +55,7 @@ import com.bandkit.app.core.loadShowLogs
 import com.bandkit.app.core.pickFileFromPicker
 import com.bandkit.app.core.saveSavedDevices
 import com.bandkit.app.core.saveShowLogs
+import com.bandkit.app.core.extractFileIdentifier
 import com.bandkit.app.models.ConnectionStatus
 import com.bandkit.app.models.DeviceInfo
 import com.bandkit.app.models.InstalledApp
@@ -102,6 +103,13 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import kotlin.time.Duration.Companion.seconds
+
+/** 格式化文件大小：自适应 B/KB/MB */
+fun formatFileSize(bytes: Int): String = when {
+    bytes >= 1024 * 1024 -> "${"%.1f".format(bytes.toFloat() / (1024 * 1024))} MB"
+    bytes >= 1024 -> "${bytes / 1024} KB"
+    else -> "$bytes B"
+}
 
 @Composable
 private fun SimpleDivider() {
@@ -1034,6 +1042,7 @@ private fun InstallSection(
 ) {
     val scope = rememberCoroutineScope()
     var selectedFile by remember { mutableStateOf<PickedFile?>(null) }
+    var selectedFileId by remember { mutableStateOf<String?>(null) }
     var installProgress by remember { mutableStateOf(-1f) }
     var installMessage by remember { mutableStateOf("") }
     var isInstalling by remember { mutableStateOf(false) }
@@ -1053,7 +1062,8 @@ private fun InstallSection(
                             val file = pickFileFromPicker(context)
                             if (file != null) {
                                 selectedFile = file
-                                onLog("已选择: ${file.name} (${file.data.size} 字节)", LogType.INFO)
+                                selectedFileId = extractFileIdentifier(file.name, file.data)
+                                onLog("已选择: ${file.name} (${formatFileSize(file.data.size)})", LogType.INFO)
                             }
                         }
                     },
@@ -1063,7 +1073,15 @@ private fun InstallSection(
                 }
                 selectedFile?.let { file ->
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("${file.name} (${file.data.size} 字节)", fontSize = 13.sp)
+                    Text("${file.name} (${formatFileSize(file.data.size)})", fontSize = 13.sp)
+                    if (!selectedFileId.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                    }
+                    // 显示提取的包名或表盘 ID
+                    if (!selectedFileId.isNullOrBlank()) {
+                        val label = if (file.name.endsWith(".rpk", true)) "包名" else "表盘 ID"
+                        Text("$label: $selectedFileId", fontSize = 12.sp, color = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.6f))
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
                         onClick = {
@@ -1079,7 +1097,7 @@ private fun InstallSection(
                                 16 -> "BIN(表盘/固件)"
                                 else -> "$resType"
                             }
-                            onLog("开始安装: ${file.name} (${file.data.size} 字节, 类型=$resTypeName)", LogType.INFO)
+                            onLog("开始安装: ${file.name} (${formatFileSize(file.data.size)}, 类型=$resTypeName)", LogType.INFO)
                             installMessage = "正在安装 ${file.name}..."
                             scope.launch {
                                 try {
