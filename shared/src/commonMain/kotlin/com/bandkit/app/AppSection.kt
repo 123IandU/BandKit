@@ -96,7 +96,7 @@ internal fun AppSection(
             } else {
                 Box(modifier = Modifier.fillMaxWidth().height(240.dp)) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(apps.size) { index ->
+                        items(apps.size, key = { apps[it].packageName }) { index ->
                             val app = apps[index]
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
