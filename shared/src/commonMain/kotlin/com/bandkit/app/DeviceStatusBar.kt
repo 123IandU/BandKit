@@ -128,7 +128,7 @@ internal fun SavedDevicesBottomSheet(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    items(savedDevices) { device ->
+                    items(savedDevices, key = { it.id }) { device ->
                         val isCurrent = currentSession?.device?.id == device.id
                         Row(
                             modifier = Modifier.fillMaxWidth()
