@@ -131,7 +131,7 @@ internal fun AddDeviceBottomSheet(
                         LazyColumn(
                             modifier = Modifier.fillMaxWidth().weight(1f),
                         ) {
-                            items(scannedDevices) { dev ->
+                            items(scannedDevices, key = { it.address }) { dev ->
                                 BasicComponent(
                                     title = dev.name,
                                     summary = dev.address,
