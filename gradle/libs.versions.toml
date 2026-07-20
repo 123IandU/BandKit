@@ -5,6 +5,7 @@ kotlinx-serialization = "1.11.0"
 
 androidx-activity = "1.13.0"
 jetbrains-compose-multiplatform = "1.11.1"
+miuix = "0.9.3"
 spotless = "8.6.0"
 
 [libraries]
@@ -14,6 +15,9 @@ spotless-plugin-gradle = { module = "com.diffplug.spotless:spotless-plugin-gradl
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 
 androidx-activity = { module = "androidx.activity:activity-compose", version.ref = "androidx-activity" }
+miuix-icons = { module = "top.yukonga.miuix.kmp:miuix-icons", version.ref = "miuix" }
+miuix-preference = { module = "top.yukonga.miuix.kmp:miuix-preference", version.ref = "miuix" }
+miuix-ui = { module = "top.yukonga.miuix.kmp:miuix-ui", version.ref = "miuix" }
 
 [plugins]
 androidApplication = { id = "com.android.application" }

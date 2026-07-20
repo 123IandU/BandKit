@@ -35,9 +35,9 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.3")
-            implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.3")
-            implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.3")
+            implementation(libs.miuix.ui)
+            implementation(libs.miuix.icons)
+            implementation(libs.miuix.preference)
             implementation(libs.kotlinx.serialization.json)
         }
         androidMain.dependencies {
