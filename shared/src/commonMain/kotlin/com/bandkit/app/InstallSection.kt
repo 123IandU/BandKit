@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,6 +36,8 @@ import com.bandkit.app.core.showToast
 import com.bandkit.app.models.DeviceSession
 import com.bandkit.app.models.LogEntry
 import com.bandkit.app.models.LogType
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
@@ -162,6 +165,7 @@ internal fun InstallSection(
 }
 
 // ─── LogSection ───
+@OptIn(FlowPreview::class)
 @Composable
 internal fun LogSection(logs: List<LogEntry>) {
     val listState = rememberLazyListState()
@@ -170,11 +174,10 @@ internal fun LogSection(logs: List<LogEntry>) {
         derivedStateOf { listState.firstVisibleItemIndex < 3 }
     }
     // 新日志到达时自动滚动到顶部
-    val logCount = logs.size
-    LaunchedEffect(logCount) {
-        if (isNearTop && logCount > 0) {
-            listState.animateScrollToItem(0)
-        }
+    LaunchedEffect(Unit) {
+        snapshotFlow { logs.size }
+            .debounce(300)
+            .collect { if (isNearTop) listState.animateScrollToItem(0) }
     }
 
     Card(modifier = Modifier.fillMaxWidth()) {
