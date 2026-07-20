@@ -391,18 +391,6 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             item {
-                                SmallTitle(text = "通用")
-                            }
-                            item {
-                                Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                                    // 操作日志开关已移至关于页：连续点击 BandKit 标题 5 次
-                                    BasicComponent(
-                                        title = "操作日志",
-                                        summary = "在关于页连续点击 BandKit 标题 5 次进行开关",
-                                    )
-                                }
-                            }
-                            item {
                                 SmallTitle(text = "设备管理")
                             }
                             item {
