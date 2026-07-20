@@ -79,7 +79,7 @@ android {
         versionName = BuildConfig.VERSION_NAME
         versionCode = BuildConfig.VERSION_CODE
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
     }
     namespace = BuildConfig.APPLICATION_ID
@@ -138,7 +138,6 @@ val rustAbiMap =
     mapOf(
         "aarch64-linux-android" to "arm64-v8a",
         "armv7-linux-androideabi" to "armeabi-v7a",
-        "x86_64-linux-android" to "x86_64",
     )
 val rustProjectDir = rootProject.projectDir.resolve("rust/app_android")
 val rustTargetDir = rustProjectDir.resolve("target")
