@@ -12,6 +12,10 @@ object NativeDevice {
     external fun registerThirdpartyAppMessageCallback(callback: (String) -> Unit)
     external fun registerPbPacketCallback(callback: (String) -> Unit)
 
+    external fun unregisterEventSink()
+    external fun unregisterThirdpartyAppMessageCallback()
+    external fun unregisterPbPacketCallback()
+
     // ======== 设备连接 ========
     external fun deviceConnect(
         name: String,

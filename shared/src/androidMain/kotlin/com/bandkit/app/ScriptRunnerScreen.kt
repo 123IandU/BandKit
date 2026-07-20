@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -342,7 +343,7 @@ fun ScriptRunnerContent(
     }
 
     // 注册 NativeDevice 事件回调，将事件推送到 WebView
-    LaunchedEffect(session) {
+    DisposableEffect(session) {
         NativeDevice.registerEventSink { eventType, eventData ->
             bridge.pushEvent(eventType, eventData)
         }
@@ -379,6 +380,11 @@ fun ScriptRunnerContent(
         }
         NativeDevice.registerPbPacketCallback { json ->
             bridge.pushEvent("pb_packet", json)
+        }
+        onDispose {
+            NativeDevice.unregisterEventSink()
+            NativeDevice.unregisterThirdpartyAppMessageCallback()
+            NativeDevice.unregisterPbPacketCallback()
         }
     }
 
