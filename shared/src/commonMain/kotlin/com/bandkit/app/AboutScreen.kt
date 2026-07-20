@@ -150,6 +150,11 @@ fun AboutScreen(
                         summary = "github.com/compose-miuix-ui/miuix",
                         onClick = { onOpenUrl("https://github.com/compose-miuix-ui/miuix") },
                     )
+                    ArrowPreference(
+                        title = "BandBurg",
+                        summary = "github.com/0-2studio/bandburg",
+                        onClick = { onOpenUrl("https://github.com/0-2studio/bandburg") },
+                    )
                 }
             }
             item {
