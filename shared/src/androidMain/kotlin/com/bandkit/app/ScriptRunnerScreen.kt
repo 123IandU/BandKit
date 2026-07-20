@@ -85,6 +85,7 @@ class ScriptBridge(
     private val appContext: android.content.Context? = null,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val whitespaceRegex = "\\s".toRegex()
 
     /** 执行脚本的 WebView 引用，用于推送事件 */
     var scriptWebView: WebView? = null
@@ -193,7 +194,7 @@ class ScriptBridge(
 
     @JavascriptInterface
     fun hexToBytes(hex: String): String {
-        val clean = hex.replace("\\s".toRegex(), "")
+        val clean = hex.replace(whitespaceRegex, "")
         return ByteArray(clean.length / 2) { i ->
             clean.substring(i * 2, i * 2 + 2).toInt(16).toByte()
         }.joinToString("") { "%02x".format(it) }
@@ -310,6 +311,9 @@ fun ScriptRunnerContent(
     var showConsole by remember { mutableStateOf(true) }
     val consoleLog = remember { mutableStateListOf<ConsoleEntry>() }
     val consoleBuffer = remember { mutableListOf<ConsoleEntry>() }
+    DisposableEffect(Unit) {
+        onDispose { consoleBuffer.clear() }
+    }
     val flushHandler = remember { Handler(Looper.getMainLooper()) }
     val flushRunnable = remember {
         Runnable {
