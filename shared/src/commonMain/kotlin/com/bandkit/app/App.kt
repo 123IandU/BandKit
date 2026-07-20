@@ -142,8 +142,12 @@ private fun AppContent(modifier: Modifier = Modifier) {
     var connectionStatus by remember { mutableStateOf(ConnectionStatus.DISCONNECTED) }
     var deviceSession by remember { mutableStateOf<com.bandkit.app.models.DeviceSession?>(null) }
     var deviceInfo by remember { mutableStateOf(DeviceInfo()) }
-    val savedDevices = remember { mutableStateListOf<SavedDevice>() }.also {
-        if (it.isEmpty()) it.addAll(loadSavedDevices(context))
+    val savedDevices = remember { mutableStateListOf<SavedDevice>() }
+    LaunchedEffect(Unit) {
+        withContext(IO) {
+            val devices = loadSavedDevices(context)
+            savedDevices.addAll(devices)
+        }
     }
     val watchfaces = remember { mutableStateListOf<Watchface>() }
     val apps = remember { mutableStateListOf<InstalledApp>() }
