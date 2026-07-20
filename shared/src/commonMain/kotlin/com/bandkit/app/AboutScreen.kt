@@ -155,6 +155,11 @@ fun AboutScreen(
                         summary = "github.com/0-2studio/bandburg",
                         onClick = { onOpenUrl("https://github.com/0-2studio/bandburg") },
                     )
+                    ArrowPreference(
+                        title = "Scripta",
+                        summary = "github.com/YuKongA/scripta",
+                        onClick = { onOpenUrl("https://github.com/YuKongA/scripta") },
+                    )
                 }
             }
             item {
