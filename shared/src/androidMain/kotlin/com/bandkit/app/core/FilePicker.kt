@@ -4,6 +4,10 @@ package com.bandkit.app.core
 
 import android.content.Context
 import android.net.Uri
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
@@ -42,29 +46,34 @@ fun handleFilePickerResult(context: Context, uri: Uri?) {
         return
     }
 
-    try {
-        val contentResolver = context.contentResolver
-        val fileName = run {
-            val cursor = contentResolver.query(uri, null, null, null, null)
-            cursor?.use {
-                val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (nameIndex >= 0 && it.moveToFirst()) {
-                    it.getString(nameIndex)
+    val scope = CoroutineScope(Dispatchers.Main)
+    scope.launch {
+        val pickedFile = withContext(Dispatchers.IO) {
+            try {
+                val contentResolver = context.contentResolver
+                val fileName = run {
+                    val cursor = contentResolver.query(uri, null, null, null, null)
+                    cursor?.use {
+                        val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex >= 0 && it.moveToFirst()) {
+                            it.getString(nameIndex)
+                        } else {
+                            null
+                        }
+                    } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "unknown"
+                }
+                val inputStream = contentResolver.openInputStream(uri)
+                val bytes = inputStream?.readBytes()
+                inputStream?.close()
+                if (bytes != null) {
+                    PickedFile(fileName, bytes)
                 } else {
                     null
                 }
-            } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "unknown"
+            } catch (_: Exception) {
+                null
+            }
         }
-        val inputStream = contentResolver.openInputStream(uri)
-        val bytes = inputStream?.readBytes()
-        inputStream?.close()
-
-        if (bytes != null) {
-            callback(PickedFile(fileName, bytes))
-        } else {
-            callback(null)
-        }
-    } catch (e: Exception) {
-        callback(null)
+        callback(pickedFile)
     }
 }

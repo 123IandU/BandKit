@@ -6,7 +6,10 @@ import android.content.Context
 import android.net.Uri
 import com.bandkit.app.models.SavedDevice
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -179,20 +182,24 @@ fun handleDeviceImportResult(context: Context, uri: Uri?) {
         return
     }
 
-    try {
-        val inputStream = context.contentResolver.openInputStream(uri)
-        val bytes = inputStream?.readBytes()
-        inputStream?.close()
-
-        if (bytes != null) {
-            val json = String(bytes)
-            val devices = Json.decodeFromString<List<SavedDevice>>(json)
-            callback(devices)
-        } else {
-            callback(null)
+    val scope = CoroutineScope(Dispatchers.Main)
+    scope.launch {
+        val devices = withContext(Dispatchers.IO) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bytes = inputStream?.readBytes()
+                inputStream?.close()
+                if (bytes != null) {
+                    val json = String(bytes)
+                    Json.decodeFromString<List<SavedDevice>>(json)
+                } else {
+                    null
+                }
+            } catch (_: Exception) {
+                null
+            }
         }
-    } catch (e: Exception) {
-        callback(null)
+        callback(devices)
     }
 }
 
