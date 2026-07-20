@@ -278,7 +278,7 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
-                            items(scripts) { script ->
+                            items(scripts, key = { it.id }) { script ->
                                 val isCurrent = script.id == currentScript?.id
                                 Row(
                                     modifier = Modifier
