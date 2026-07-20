@@ -4,6 +4,10 @@ package com.bandkit.app.core
 
 actual class BluetoothScanner {
 
+    companion object {
+        private const val TAG = "BluetoothScanner"
+    }
+
     private var context: android.content.Context? = null
     private var scanner: android.bluetooth.le.BluetoothLeScanner? = null
     private var isScanning = false
@@ -96,5 +100,3 @@ actual class BluetoothScanner {
 }
 
 actual fun createBluetoothScanner(): BluetoothScanner = BluetoothScanner()
-
-private const val TAG = "BluetoothScanner"
