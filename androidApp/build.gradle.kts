@@ -96,6 +96,7 @@ android {
 val appBuildConfigFile = rootProject.projectDir.resolve("shared/src/commonMain/kotlin/com/bandkit/app/AppBuildConfig.kt")
 if (appBuildConfigFile.exists()) {
     val appConfigText = appBuildConfigFile.readText()
+
     // 从 AppBuildConfig.kt 中提取值并与 BuildConfig 比对
     fun extractAppValue(key: String): String? {
         val search = "const val $key = \""
@@ -105,6 +106,7 @@ if (appBuildConfigFile.exists()) {
         val valueEnd = appConfigText.indexOf('"', valueStart)
         return if (valueEnd < 0) null else appConfigText.substring(valueStart, valueEnd)
     }
+
     fun extractAppInt(key: String): Int? {
         val search = "const val $key = "
         val start = appConfigText.indexOf(search)
@@ -118,12 +120,15 @@ if (appBuildConfigFile.exists()) {
     val appVersionCode = extractAppInt("VERSION_CODE")
     val appAppId = extractAppValue("APPLICATION_ID")
 
-    if (appVersionName != null && appVersionName != BuildConfig.VERSION_NAME)
+    if (appVersionName != null && appVersionName != BuildConfig.VERSION_NAME) {
         throw GradleException("AppBuildConfig.VERSION_NAME ($appVersionName) 与 BuildConfig (${BuildConfig.VERSION_NAME}) 不一致，请同步")
-    if (appVersionCode != null && appVersionCode != BuildConfig.VERSION_CODE)
+    }
+    if (appVersionCode != null && appVersionCode != BuildConfig.VERSION_CODE) {
         throw GradleException("AppBuildConfig.VERSION_CODE ($appVersionCode) 与 BuildConfig (${BuildConfig.VERSION_CODE}) 不一致，请同步")
-    if (appAppId != null && appAppId != BuildConfig.APPLICATION_ID)
+    }
+    if (appAppId != null && appAppId != BuildConfig.APPLICATION_ID) {
         throw GradleException("AppBuildConfig.APPLICATION_ID ($appAppId) 与 BuildConfig (${BuildConfig.APPLICATION_ID}) 不一致，请同步")
+    }
 }
 
 // ======== Rust JNI 库 - 自动编译 + 复制（兼容配置缓存）=======
