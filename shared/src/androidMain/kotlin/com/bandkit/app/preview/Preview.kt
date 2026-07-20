@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.bandkit.app.preview
 
-import com.bandkit.app.formatFileSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bandkit.app.core.formatFileSize
 import com.bandkit.app.models.ConnectionStatus
 import com.bandkit.app.models.DeviceInfo
 import com.bandkit.app.models.InstalledApp

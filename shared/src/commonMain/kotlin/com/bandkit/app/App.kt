@@ -27,8 +27,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,7 +48,10 @@ import com.bandkit.app.core.ScannedDevice
 import com.bandkit.app.core.createBandBurgManager
 import com.bandkit.app.core.createBluetoothScanner
 import com.bandkit.app.core.currentTimeMillis
+import com.bandkit.app.core.detectFileType
 import com.bandkit.app.core.exportSavedDevicesToFile
+import com.bandkit.app.core.extractFileIdentifier
+import com.bandkit.app.core.formatFileSize
 import com.bandkit.app.core.formatTimestamp
 import com.bandkit.app.core.importSavedDevicesFromFile
 import com.bandkit.app.core.initBandBurgContext
@@ -56,13 +59,12 @@ import com.bandkit.app.core.launchAboutActivity
 import com.bandkit.app.core.loadLastDevice
 import com.bandkit.app.core.loadSavedDevices
 import com.bandkit.app.core.loadShowLogs
+import com.bandkit.app.core.parseStoragePercent
 import com.bandkit.app.core.pickFileFromPicker
-import com.bandkit.app.core.saveSavedDevices
 import com.bandkit.app.core.saveLastDevice
+import com.bandkit.app.core.saveSavedDevices
 import com.bandkit.app.core.saveShowLogs
 import com.bandkit.app.core.showToast
-import com.bandkit.app.core.detectFileType
-import com.bandkit.app.core.extractFileIdentifier
 import com.bandkit.app.models.ConnectionStatus
 import com.bandkit.app.models.DeviceInfo
 import com.bandkit.app.models.InstalledApp
@@ -111,35 +113,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import kotlin.time.Duration.Companion.seconds
 
-/** 格式化文件大小：自适应 B/KB/MB */
-fun formatFileSize(bytes: Int): String = when {
-    bytes >= 1024 * 1024 -> "${"%.1f".format(bytes.toFloat() / (1024 * 1024))} MB"
-    bytes >= 1024 -> "${bytes / 1024} KB"
-    else -> "$bytes B"
-}
-
 @Composable
 private fun SimpleDivider() {
     Box(
         modifier = Modifier.fillMaxWidth().height(1.dp)
             .background(Color.LightGray.copy(alpha = 0.3f)),
     )
-}
-
-private fun parseStoragePercent(used: String, total: String): Float {
-    fun parseBytes(s: String): Float {
-        val num = s.replace(Regex("[^0-9.]"), "").toFloatOrNull() ?: return 0f
-        return when {
-            s.contains("TB", ignoreCase = true) -> num * 1024f * 1024f * 1024f * 1024f
-            s.contains("GB", ignoreCase = true) -> num * 1024f * 1024f * 1024f
-            s.contains("MB", ignoreCase = true) -> num * 1024f * 1024f
-            s.contains("KB", ignoreCase = true) -> num * 1024f
-            else -> num
-        }
-    }
-    val usedBytes = parseBytes(used)
-    val totalBytes = parseBytes(total)
-    return if (totalBytes > 0f) (usedBytes / totalBytes).coerceIn(0f, 1f) else 0f
 }
 
 @Composable
@@ -385,18 +364,22 @@ private fun AppContent(modifier: Modifier = Modifier) {
                                     }
 
                                     2 -> InstallSection(
-                                        deviceSession, manager, context,
+                                        deviceSession,
+                                        manager,
+                                        context,
                                         onLog = { msg, type -> addLog(msg, type) },
                                         onInstallComplete = { resType ->
                                             scope.launch {
                                                 val s = deviceSession ?: return@launch
                                                 if (resType == 64) {
                                                     val newApps = withContext(IO) { manager.getAppList(s) }
-                                                    apps.clear(); apps.addAll(newApps)
+                                                    apps.clear()
+                                                    apps.addAll(newApps)
                                                     addLog("应用列表已刷新", LogType.INFO)
                                                 } else if (resType == 16) {
                                                     val newWf = withContext(IO) { manager.getWatchfaceList(s) }
-                                                    watchfaces.clear(); watchfaces.addAll(newWf)
+                                                    watchfaces.clear()
+                                                    watchfaces.addAll(newWf)
                                                     addLog("表盘列表已刷新", LogType.INFO)
                                                 }
                                             }

@@ -4,7 +4,7 @@ package com.bandkit.app.core
 
 import android.content.Context
 import android.util.Log
-import com.bandkit.app.formatFileSize
+import com.bandkit.app.core.formatFileSize
 import com.bandkit.app.models.DeviceInfo
 import com.bandkit.app.models.DeviceSession
 import com.bandkit.app.models.InstalledApp
@@ -206,7 +206,9 @@ actual class BandBurgManager {
                     val num = hash.take(6).fold(0L) { acc, b -> (acc shl 8) or (b.toLong() and 0xFF) } % 1_000_000_000_000L
                     "%012d".format(num)
                 }
-            } else null
+            } else {
+                null
+            }
             val result = withContext(Dispatchers.IO) {
                 NativeDevice.deviceInstall(
                     addr = addr,
@@ -254,7 +256,10 @@ actual class BandBurgManager {
         var i = 0
         while (i < fieldLen) {
             val c = field[i].toInt().toChar()
-            if (!c.isLetterOrDigit()) { i++; continue }
+            if (!c.isLetterOrDigit()) {
+                i++
+                continue
+            }
             val start = i
             while (i < fieldLen && field[i].toInt().toChar().isLetterOrDigit()) i++
             val runLen = i - start
