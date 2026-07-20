@@ -39,6 +39,7 @@ data class LogEntry(
     val timestamp: Long,
     val message: String,
     val type: LogType = LogType.INFO,
+    val id: Long = 0L,
 )
 
 enum class LogType { INFO, SUCCESS, ERROR, WARNING }

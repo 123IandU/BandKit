@@ -116,9 +116,9 @@ Cargo 配置 `.cargo/config.toml` 指定 NDK 链接器路径。
 
 ### 未实现 / 已知限制
 
-- **`sandbox.wasm.register_event_sink(callback)`** — Rust 层（commit `fa961c9`）已添加 `emit_event` 函数，支持 `device_connected`、`device_disconnected`、`thirdpartyapp_message`、`pb_packet` 事件推送。但 NativeDevice JNI 层的 `registerEventSink` 到 WebView `evaluateJavascript()` 的转发链路尚未搭建。完整实现需在 `ScriptBridge` 中将接收到的 JNI 事件通过 `evaluateJavascript()` 推送到 WebView JS 侧。
 - **`sandbox.wasm.miwear_get_file_type`** / **`sandbox.wasm.miwear_install`** — stub 实现，返回空值/ false。
-- **RPK 安装体验改进**：安装进度已通过 progress_cb 实时回传（`7aadf81`），`watchfaceId=null` 时 Rust 报 `invalid watchface id` 的问题待修复。
+- **RPK 安装体验改进**：安装进度已通过 progress_cb 实时回传（`7aadf81`）。watchfaceId 已修复：先尝试从 .bin 文件提取，失败则用 MD5 前 6 字节生成 12 位数字 ID。
+- **设备事件回调**：4 种事件（`device_connected/disconnected`、`thirdpartyapp_message`、`pb_packet`）已通过 Rust JNI → NativeDevice → ScriptBridge → WebView 全链路打通。`thirdpartyapp_message` 的 hex payload 会自动解码为 JSON。事件名从连字符规范化为下划线。详见 [ScriptRunnerScreen.kt](shared/src/androidMain/kotlin/com/bandkit/app/ScriptRunnerScreen.kt) 的 `pushEvent` 和 `_emitEvent`。
 
 ## Gotchas
 

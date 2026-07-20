@@ -360,6 +360,25 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                                 Text("在线商店")
                             }
                             Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = {
+                                    showFileManager = false
+                                    @Suppress("UNCHECKED_CAST")
+                                    val cls = Class.forName("com.bandkit.app.ScriptRunnerActivity") as Class<android.app.Activity>
+                                    val intent = Intent(context, cls).apply {
+                                        val unlockCode = context.assets.open("xiaomi-unlock-code.js").bufferedReader().readText()
+                                        putExtra(EXTRA_SCRIPT_CODE, unlockCode)
+                                        putExtra(EXTRA_DEVICE_ADDR, session?.device?.addr ?: "")
+                                        putExtra(EXTRA_DEVICE_NAME, session?.device?.name ?: "")
+                                        putExtra(EXTRA_AUTH_KEY, session?.device?.authkey ?: "")
+                                    }
+                                    context.startActivity(intent)
+                                },
+                                colors = ButtonDefaults.buttonColorsPrimary(),
+                            ) {
+                                Text("解锁码")
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
                             Button(onClick = { showFileManager = false }) {
                                 Text("关闭")
                             }

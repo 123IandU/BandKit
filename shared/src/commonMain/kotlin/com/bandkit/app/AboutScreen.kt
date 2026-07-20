@@ -14,12 +14,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bandkit.app.core.loadShowLogs
+import com.bandkit.app.core.LocalPlatformContext
+import com.bandkit.app.core.saveShowLogs
+import com.bandkit.app.core.showToast
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
@@ -53,6 +62,9 @@ fun AboutScreen(
             )
         },
     ) { innerPadding ->
+        val context = LocalPlatformContext.current
+        var tapCount by remember { mutableIntStateOf(0) }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -70,6 +82,19 @@ fun AboutScreen(
                         color = MiuixTheme.colorScheme.onBackground,
                         fontWeight = FontWeight.Bold,
                         fontSize = 32.sp,
+                        modifier = Modifier.clickable {
+                            tapCount++
+                            val remaining = 5 - tapCount
+                            when {
+                                remaining > 0 -> showToast(context, "再点 $remaining 次显示操作日志")
+                                tapCount == 5 -> {
+                                    val newValue = !loadShowLogs(context)
+                                    saveShowLogs(context, newValue)
+                                    showToast(context, if (newValue) "操作日志已显示" else "操作日志已隐藏")
+                                    tapCount = 0
+                                }
+                            }
+                        },
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(

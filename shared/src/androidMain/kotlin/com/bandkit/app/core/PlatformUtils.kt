@@ -194,3 +194,41 @@ fun handleDeviceImportResult(context: Context, uri: Uri?) {
         callback(null)
     }
 }
+
+actual fun detectFileType(fileName: String, fileData: ByteArray): Int {
+    try {
+        val raw = NativeDevice.deviceGetFileType(fileData, fileName).toInt() and 0xFF
+        // 只认有效 MassDataType 值（16/32/48/50/52/53/64/91），否则走 fallback
+        if (raw in listOf(16, 32, 48, 50, 52, 53, 64, 91)) return raw
+    } catch (_: Exception) { /* fallback */ }
+    return when {
+        fileName.endsWith(".rpk", true) -> 64
+        fileName.endsWith(".fw", true) || fileName.endsWith(".ota", true) -> 32
+        fileName.endsWith(".bin", true) -> 16
+        else -> 16
+    }
+}
+
+actual fun showToast(context: Any, message: String) {
+    try {
+        val ctx = context as android.content.Context
+        android.widget.Toast.makeText(ctx, message, android.widget.Toast.LENGTH_SHORT).show()
+    } catch (_: Exception) { /* ignore */ }
+}
+
+actual fun saveLastDevice(context: Any, device: SavedDevice?) {
+    try {
+        val ctx = context as android.content.Context
+        val prefs = ctx.getSharedPreferences("bandburg", android.content.Context.MODE_PRIVATE)
+        prefs.edit().putString("last_device", if (device != null) Json.encodeToString(device) else null).apply()
+    } catch (_: Exception) { /* ignore */ }
+}
+
+actual fun loadLastDevice(context: Any): SavedDevice? {
+    return try {
+        val ctx = context as android.content.Context
+        val prefs = ctx.getSharedPreferences("bandburg", android.content.Context.MODE_PRIVATE)
+        val json = prefs.getString("last_device", null) ?: return null
+        Json.decodeFromString<SavedDevice>(json)
+    } catch (_: Exception) { null }
+}

@@ -20,12 +20,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,11 +53,15 @@ import com.bandkit.app.core.formatTimestamp
 import com.bandkit.app.core.importSavedDevicesFromFile
 import com.bandkit.app.core.initBandBurgContext
 import com.bandkit.app.core.launchAboutActivity
+import com.bandkit.app.core.loadLastDevice
 import com.bandkit.app.core.loadSavedDevices
 import com.bandkit.app.core.loadShowLogs
 import com.bandkit.app.core.pickFileFromPicker
 import com.bandkit.app.core.saveSavedDevices
+import com.bandkit.app.core.saveLastDevice
 import com.bandkit.app.core.saveShowLogs
+import com.bandkit.app.core.showToast
+import com.bandkit.app.core.detectFileType
 import com.bandkit.app.core.extractFileIdentifier
 import com.bandkit.app.models.ConnectionStatus
 import com.bandkit.app.models.DeviceInfo
@@ -152,6 +159,17 @@ private fun AppContent(modifier: Modifier = Modifier) {
 
     var activeTab by remember { mutableIntStateOf(0) }
     var showLogs by remember { mutableStateOf(loadShowLogs(context)) }
+    // 从关于页返回时重新读取日志开关状态
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                showLogs = loadShowLogs(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     var selectedNavIndex by remember { mutableIntStateOf(0) }
     var connectionStatus by remember { mutableStateOf(ConnectionStatus.DISCONNECTED) }
     var deviceSession by remember { mutableStateOf<com.bandkit.app.models.DeviceSession?>(null) }
@@ -161,6 +179,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
     }
     val watchfaces = remember { mutableStateListOf<Watchface>() }
     val apps = remember { mutableStateListOf<InstalledApp>() }
+    var logCounter by remember { mutableLongStateOf(0L) }
     val logs = remember {
         mutableStateListOf(
             LogEntry(currentTimeMillis(), "欢迎使用 BandKit - Vela 设备管理工具"),
@@ -179,8 +198,11 @@ private fun AppContent(modifier: Modifier = Modifier) {
     var isScanning by remember { mutableStateOf(false) }
 
     val addLog: (String, LogType) -> Unit = { message, type ->
-        logs.add(0, LogEntry(currentTimeMillis(), message, type))
-        if (logs.size > 50) logs.removeLast()
+        if (showLogs) {
+            logCounter++
+            logs.add(0, LogEntry(currentTimeMillis(), message, type, logCounter))
+            if (logs.size > 200) logs.removeAt(logs.lastIndex)
+        }
     }
 
     fun connectToDevice(device: SavedDevice) {
@@ -208,6 +230,8 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 deviceSession = session
                 connectionStatus = ConnectionStatus.CONNECTED
                 addLog("${device.name} 连接成功", LogType.SUCCESS)
+                showToast(context, "${device.name} 连接成功")
+                saveLastDevice(context, device)
                 delay(1.seconds)
                 addLog("正在获取设备信息...", LogType.INFO)
                 var info = withContext(IO) { manager.getDeviceInfo(session) }
@@ -239,7 +263,17 @@ private fun AppContent(modifier: Modifier = Modifier) {
             } catch (e: Exception) {
                 connectionStatus = ConnectionStatus.DISCONNECTED
                 addLog("连接失败: ${e.message}", LogType.ERROR)
+                showToast(context, "连接失败: ${e.message}")
             }
+        }
+    }
+
+    // 启动时自动连接上一次连接的设备
+    LaunchedEffect(Unit) {
+        val lastDevice = loadLastDevice(context)
+        if (lastDevice != null) {
+            addLog("发现上次连接的设备: ${lastDevice.name}，正在自动连接...", LogType.INFO)
+            connectToDevice(lastDevice)
         }
     }
 
@@ -253,6 +287,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
                 deviceInfo = DeviceInfo()
                 watchfaces.clear()
                 apps.clear()
+                saveLastDevice(context, null) // 清除记忆，不自动重连
                 addLog("已断开", LogType.SUCCESS)
             }
         }
@@ -349,7 +384,24 @@ private fun AppContent(modifier: Modifier = Modifier) {
                                         apps.addAll(newItems)
                                     }
 
-                                    2 -> InstallSection(deviceSession, manager, context) { msg, type -> addLog(msg, type) }
+                                    2 -> InstallSection(
+                                        deviceSession, manager, context,
+                                        onLog = { msg, type -> addLog(msg, type) },
+                                        onInstallComplete = { resType ->
+                                            scope.launch {
+                                                val s = deviceSession ?: return@launch
+                                                if (resType == 64) {
+                                                    val newApps = withContext(IO) { manager.getAppList(s) }
+                                                    apps.clear(); apps.addAll(newApps)
+                                                    addLog("应用列表已刷新", LogType.INFO)
+                                                } else if (resType == 16) {
+                                                    val newWf = withContext(IO) { manager.getWatchfaceList(s) }
+                                                    watchfaces.clear(); watchfaces.addAll(newWf)
+                                                    addLog("表盘列表已刷新", LogType.INFO)
+                                                }
+                                            }
+                                        },
+                                    )
                                 }
                             }
                             if (showLogs) {
@@ -371,14 +423,10 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             }
                             item {
                                 Card(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
-                                    SwitchPreference(
-                                        title = "显示操作日志",
-                                        summary = "在主界面显示操作日志面板",
-                                        checked = showLogs,
-                                        onCheckedChange = {
-                                            showLogs = it
-                                            saveShowLogs(context, it)
-                                        },
+                                    // 操作日志开关已移至关于页：连续点击 BandKit 标题 5 次
+                                    BasicComponent(
+                                        title = "操作日志",
+                                        summary = "在关于页连续点击 BandKit 标题 5 次进行开关",
                                     )
                                 }
                             }
@@ -1039,6 +1087,7 @@ private fun InstallSection(
     manager: BandBurgManager,
     context: Any,
     onLog: (String, LogType) -> Unit,
+    onInstallComplete: (resType: Int) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var selectedFile by remember { mutableStateOf<PickedFile?>(null) }
@@ -1087,14 +1136,11 @@ private fun InstallSection(
                         onClick = {
                             isInstalling = true
                             installProgress = 0f
-                            val resType = when {
-                                file.name.endsWith(".rpk", true) -> 64
-                                file.name.endsWith(".bin", true) -> 16
-                                else -> 16
-                            }
+                            val resType = detectFileType(file.name, file.data)
                             val resTypeName = when (resType) {
                                 64 -> "RPK(第三方应用)"
-                                16 -> "BIN(表盘/固件)"
+                                32 -> "FW(固件)"
+                                16 -> "BIN(表盘)"
                                 else -> "$resType"
                             }
                             onLog("开始安装: ${file.name} (${formatFileSize(file.data.size)}, 类型=$resTypeName)", LogType.INFO)
@@ -1115,8 +1161,11 @@ private fun InstallSection(
                                     }
                                     if (result) {
                                         onLog("文件安装成功: ${file.name}", LogType.SUCCESS)
+                                        showToast(context, "安装成功: ${file.name}")
+                                        onInstallComplete(resType)
                                     } else {
                                         onLog("文件安装失败: ${file.name}，请查看 Logcat 获取详细错误", LogType.ERROR)
+                                        showToast(context, "安装失败: ${file.name}")
                                     }
                                 } catch (e: Exception) {
                                     onLog("安装异常: ${e.message}", LogType.ERROR)
@@ -1151,13 +1200,29 @@ private fun InstallSection(
 // ─── LogSection ───
 @Composable
 private fun LogSection(logs: List<LogEntry>) {
+    val listState = rememberLazyListState()
+    // 用户是否靠近顶部（前 3 条内），靠近则自动跟随
+    val isNearTop by remember {
+        derivedStateOf { listState.firstVisibleItemIndex < 3 }
+    }
+    // 新日志到达时自动滚动到顶部
+    val logCount = logs.size
+    LaunchedEffect(logCount) {
+        if (isNearTop && logCount > 0) {
+            listState.animateScrollToItem(0)
+        }
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp).height(200.dp)) {
             Text("操作日志", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
             SimpleDivider()
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(logs, key = { "${it.timestamp}_${it.message.hashCode()}" }) { entry ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                state = listState,
+            ) {
+                items(logs, key = { it.id }) { entry ->
                     val color = when (entry.type) {
                         LogType.SUCCESS -> MiuixTheme.colorScheme.primary
                         LogType.ERROR -> MiuixTheme.colorScheme.error

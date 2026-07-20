@@ -9,6 +9,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.remember
+import com.bandkit.app.core.PlatformContextProvider
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
@@ -22,12 +23,14 @@ class AboutActivity : ComponentActivity() {
             val controller = remember { ThemeController(ColorSchemeMode.System) }
 
             MiuixTheme(controller = controller) {
-                AboutScreen(
-                    onBack = { finish() },
-                    onOpenUrl = { url ->
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    },
-                )
+                PlatformContextProvider {
+                    AboutScreen(
+                        onBack = { finish() },
+                        onOpenUrl = { url ->
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        },
+                    )
+                }
             }
         }
     }
