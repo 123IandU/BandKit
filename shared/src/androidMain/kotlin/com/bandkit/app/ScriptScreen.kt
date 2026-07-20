@@ -47,7 +47,9 @@ import com.bandkit.app.core.currentTimeMillis
 import com.bandkit.app.core.pickFileFromPicker
 import com.bandkit.app.models.DeviceSession
 import com.bandkit.app.models.ScriptDoc
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import top.yukonga.miuix.kmp.basic.Button
@@ -344,16 +346,20 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                             Button(
                                 onClick = {
                                     showFileManager = false
-                                    @Suppress("UNCHECKED_CAST")
-                                    val cls = Class.forName("com.bandkit.app.ScriptRunnerActivity") as Class<android.app.Activity>
-                                    val intent = Intent(context, cls).apply {
+                                    scope.launch(Dispatchers.IO) {
                                         val storeCode = context.assets.open("script_store.js").bufferedReader().readText()
-                                        putExtra(EXTRA_SCRIPT_CODE, storeCode)
-                                        putExtra(EXTRA_DEVICE_ADDR, session?.device?.addr ?: "")
-                                        putExtra(EXTRA_DEVICE_NAME, session?.device?.name ?: "")
-                                        putExtra(EXTRA_AUTH_KEY, session?.device?.authkey ?: "")
+                                        withContext(Dispatchers.Main) {
+                                            @Suppress("UNCHECKED_CAST")
+                                            val cls = Class.forName("com.bandkit.app.ScriptRunnerActivity") as Class<android.app.Activity>
+                                            val intent = Intent(context, cls).apply {
+                                                putExtra(EXTRA_SCRIPT_CODE, storeCode)
+                                                putExtra(EXTRA_DEVICE_ADDR, session?.device?.addr ?: "")
+                                                putExtra(EXTRA_DEVICE_NAME, session?.device?.name ?: "")
+                                                putExtra(EXTRA_AUTH_KEY, session?.device?.authkey ?: "")
+                                            }
+                                            context.startActivity(intent)
+                                        }
                                     }
-                                    context.startActivity(intent)
                                 },
                                 colors = ButtonDefaults.buttonColorsPrimary(),
                             ) {
@@ -363,16 +369,20 @@ actual fun PlatformScriptScreen(session: DeviceSession?) {
                             Button(
                                 onClick = {
                                     showFileManager = false
-                                    @Suppress("UNCHECKED_CAST")
-                                    val cls = Class.forName("com.bandkit.app.ScriptRunnerActivity") as Class<android.app.Activity>
-                                    val intent = Intent(context, cls).apply {
+                                    scope.launch(Dispatchers.IO) {
                                         val unlockCode = context.assets.open("xiaomi-unlock-code.js").bufferedReader().readText()
-                                        putExtra(EXTRA_SCRIPT_CODE, unlockCode)
-                                        putExtra(EXTRA_DEVICE_ADDR, session?.device?.addr ?: "")
-                                        putExtra(EXTRA_DEVICE_NAME, session?.device?.name ?: "")
-                                        putExtra(EXTRA_AUTH_KEY, session?.device?.authkey ?: "")
+                                        withContext(Dispatchers.Main) {
+                                            @Suppress("UNCHECKED_CAST")
+                                            val cls = Class.forName("com.bandkit.app.ScriptRunnerActivity") as Class<android.app.Activity>
+                                            val intent = Intent(context, cls).apply {
+                                                putExtra(EXTRA_SCRIPT_CODE, unlockCode)
+                                                putExtra(EXTRA_DEVICE_ADDR, session?.device?.addr ?: "")
+                                                putExtra(EXTRA_DEVICE_NAME, session?.device?.name ?: "")
+                                                putExtra(EXTRA_AUTH_KEY, session?.device?.authkey ?: "")
+                                            }
+                                            context.startActivity(intent)
+                                        }
                                     }
-                                    context.startActivity(intent)
                                 },
                                 colors = ButtonDefaults.buttonColorsPrimary(),
                             ) {

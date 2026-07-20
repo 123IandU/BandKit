@@ -94,19 +94,17 @@ actual class BandBurgManager {
         disconnect(session)
     }
 
-    actual suspend fun getDeviceInfo(session: DeviceSession): DeviceInfo {
-        return try {
-            withContext(Dispatchers.IO) {
-                val addr = session.device.addr
-                val infoJson = NativeDevice.deviceGetData(addr, "info")
-                val statusJson = NativeDevice.deviceGetData(addr, "status")
-                val storageJson = NativeDevice.deviceGetData(addr, "storage")
-                ResponseParser.parseDeviceInfo(infoJson, statusJson, storageJson, session.device.name)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "getDeviceInfo failed", e)
-            DeviceInfo(model = session.device.name, serialNumber = session.device.addr)
+    actual suspend fun getDeviceInfo(session: DeviceSession): DeviceInfo = try {
+        withContext(Dispatchers.IO) {
+            val addr = session.device.addr
+            val infoJson = NativeDevice.deviceGetData(addr, "info")
+            val statusJson = NativeDevice.deviceGetData(addr, "status")
+            val storageJson = NativeDevice.deviceGetData(addr, "storage")
+            ResponseParser.parseDeviceInfo(infoJson, statusJson, storageJson, session.device.name)
         }
+    } catch (e: Exception) {
+        Log.e(TAG, "getDeviceInfo failed", e)
+        DeviceInfo(model = session.device.name, serialNumber = session.device.addr)
     }
 
     actual suspend fun getWatchfaceList(session: DeviceSession): List<Watchface> {
