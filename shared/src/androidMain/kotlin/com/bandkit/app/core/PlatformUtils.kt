@@ -78,29 +78,26 @@ actual fun extractFileIdentifier(fileName: String, fileData: ByteArray): String?
         }
     } else if (fileName.endsWith(".bin", true)) {
         // 从 .bin 文件 offset=34, field_len=24 中扫描 9/12 位 ID
-        val offset = 34; val fieldLen = 24
+        val offset = 34
+        val fieldLen = 24
         if (fileData.size < offset + fieldLen) return null
         val field = fileData.copyOfRange(offset, offset + fieldLen)
         var i = 0
         while (i < fieldLen) {
             val c = field[i].toInt().toChar()
-            if (!c.isLetterOrDigit()) { i++; continue }
+            if (!c.isLetterOrDigit()) {
+                i++
+                continue
+            }
             val start = i
             while (i < fieldLen && field[i].toInt().toChar().isLetterOrDigit()) i++
             val runLen = i - start
             if (runLen == 9 || runLen == 12) return field.copyOfRange(start, i).decodeToString().take(runLen)
         }
         null
-    } else null
-}
-
-object DeviceExportImportState {
-    var pendingExportResult: ((Boolean) -> Unit)? = null
-    var pendingImportResult: ((List<SavedDevice>?) -> Unit)? = null
-    var exportDevices: List<SavedDevice>? = null
-    var importLauncher: ((String) -> Unit)? = null
-    var exportLauncher: ((String, String) -> Unit)? = null
-    var filePickerLauncher: ((String) -> Unit)? = null
+    } else {
+        null
+    }
 }
 
 actual suspend fun exportSavedDevicesToFile(context: Any, devices: List<SavedDevice>): Boolean = suspendCoroutine { cont ->
@@ -230,5 +227,7 @@ actual fun loadLastDevice(context: Any): SavedDevice? {
         val prefs = ctx.getSharedPreferences("bandburg", android.content.Context.MODE_PRIVATE)
         val json = prefs.getString("last_device", null) ?: return null
         Json.decodeFromString<SavedDevice>(json)
-    } catch (_: Exception) { null }
+    } catch (_: Exception) {
+        null
+    }
 }
