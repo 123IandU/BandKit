@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -95,8 +96,7 @@ internal fun WatchfaceSection(
             } else {
                 Box(modifier = Modifier.fillMaxWidth().height(240.dp)) {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(watchfaces.size) { index ->
-                            val wf = watchfaces[index]
+                        itemsIndexed(watchfaces, key = { _, wf -> wf.id }) { index, wf ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
