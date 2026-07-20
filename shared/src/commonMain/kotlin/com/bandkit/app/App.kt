@@ -165,74 +165,92 @@ private fun AppContent(modifier: Modifier = Modifier) {
     val scannedDevices = remember { mutableStateListOf<ScannedDevice>() }
     var isScanning by remember { mutableStateOf(false) }
 
-    val addLog: (String, LogType) -> Unit = { message, type ->
-        if (showLogs) {
-            logCounter++
-            logs.add(0, LogEntry(currentTimeMillis(), message, type, logCounter))
-            if (logs.size > 200) logs.removeAt(logs.lastIndex)
+    val addLog = remember(showLogs) {
+        { message: String, type: LogType ->
+            if (showLogs) {
+                logCounter++
+                logs.add(0, LogEntry(currentTimeMillis(), message, type, logCounter))
+                if (logs.size > 200) logs.removeAt(logs.lastIndex)
+            }
         }
     }
 
-    fun connectToDevice(device: SavedDevice) {
-        scope.launch {
-            if (deviceSession != null) {
-                addLog("正在断开当前设备...", LogType.INFO)
-                withContext(IO) { manager.disconnect(deviceSession!!) }
-                deviceSession = null
-                connectionStatus = ConnectionStatus.DISCONNECTED
-                deviceInfo = DeviceInfo()
-                watchfaces.clear()
-                apps.clear()
-            }
-            connectionStatus = ConnectionStatus.CONNECTING
-            addLog("正在连接 ${device.name}...", LogType.INFO)
-            try {
-                val session = withContext(IO) {
-                    manager.connect(
-                        device.name,
-                        device.addr,
-                        device.authkey,
-                        if (device.connectType == "BLE") 1 else 0,
-                    )
-                }
-                deviceSession = session
-                connectionStatus = ConnectionStatus.CONNECTED
-                addLog("${device.name} 连接成功", LogType.SUCCESS)
-                showToast(context, "${device.name} 连接成功")
-                saveLastDevice(context, device)
-                delay(1.seconds)
-                addLog("正在获取设备信息...", LogType.INFO)
-                var info = withContext(IO) { manager.getDeviceInfo(session) }
-                if (info.model == device.name && info.firmwareVersion == "-") {
-                    addLog("首次查询无数据，重试中...", LogType.INFO)
-                    delay(2.seconds)
-                    info = withContext(IO) { manager.getDeviceInfo(session) }
-                }
-                deviceInfo = info
-                addLog("设备: ${info.model} (${info.firmwareVersion})", LogType.SUCCESS)
-                addLog("电量: ${info.batteryPercent}% | 存储: ${info.totalStorage}", LogType.SUCCESS)
-                addLog("正在加载表盘和应用列表...", LogType.INFO)
-                try {
-                    val wf = withContext(IO) { manager.getWatchfaceList(session) }
+    val connectToDevice = remember(manager) {
+        { device: SavedDevice ->
+            scope.launch {
+                if (deviceSession != null) {
+                    addLog("正在断开当前设备...", LogType.INFO)
+                    withContext(IO) { manager.disconnect(deviceSession!!) }
+                    deviceSession = null
+                    connectionStatus = ConnectionStatus.DISCONNECTED
+                    deviceInfo = DeviceInfo()
                     watchfaces.clear()
-                    watchfaces.addAll(wf)
-                    addLog("已加载 ${wf.size} 个表盘", LogType.SUCCESS)
-                } catch (e: Exception) {
-                    addLog("表盘加载失败: ${e.message}", LogType.ERROR)
-                }
-                try {
-                    val appList = withContext(IO) { manager.getAppList(session) }
                     apps.clear()
-                    apps.addAll(appList)
-                    addLog("已加载 ${appList.size} 个应用", LogType.SUCCESS)
-                } catch (e: Exception) {
-                    addLog("应用加载失败: ${e.message}", LogType.ERROR)
                 }
-            } catch (e: Exception) {
-                connectionStatus = ConnectionStatus.DISCONNECTED
-                addLog("连接失败: ${e.message}", LogType.ERROR)
-                showToast(context, "连接失败: ${e.message}")
+                connectionStatus = ConnectionStatus.CONNECTING
+                addLog("正在连接 ${device.name}...", LogType.INFO)
+                try {
+                    val session = withContext(IO) {
+                        manager.connect(
+                            device.name,
+                            device.addr,
+                            device.authkey,
+                            if (device.connectType == "BLE") 1 else 0,
+                        )
+                    }
+                    deviceSession = session
+                    connectionStatus = ConnectionStatus.CONNECTED
+                    addLog("${device.name} 连接成功", LogType.SUCCESS)
+                    showToast(context, "${device.name} 连接成功")
+                    saveLastDevice(context, device)
+                    delay(1.seconds)
+                    addLog("正在获取设备信息...", LogType.INFO)
+                    var info = withContext(IO) { manager.getDeviceInfo(session) }
+                    if (info.model == device.name && info.firmwareVersion == "-") {
+                        addLog("首次查询无数据，重试中...", LogType.INFO)
+                        delay(2.seconds)
+                        info = withContext(IO) { manager.getDeviceInfo(session) }
+                    }
+                    deviceInfo = info
+                    addLog("设备: ${info.model} (${info.firmwareVersion})", LogType.SUCCESS)
+                    addLog("电量: ${info.batteryPercent}% | 存储: ${info.totalStorage}", LogType.SUCCESS)
+                    addLog("正在加载表盘和应用列表...", LogType.INFO)
+                    try {
+                        val wf = withContext(IO) { manager.getWatchfaceList(session) }
+                        watchfaces.clear()
+                        watchfaces.addAll(wf)
+                        addLog("已加载 ${wf.size} 个表盘", LogType.SUCCESS)
+                    } catch (e: Exception) {
+                        addLog("表盘加载失败: ${e.message}", LogType.ERROR)
+                    }
+                    try {
+                        val appList = withContext(IO) { manager.getAppList(session) }
+                        apps.clear()
+                        apps.addAll(appList)
+                        addLog("已加载 ${appList.size} 个应用", LogType.SUCCESS)
+                    } catch (e: Exception) {
+                        addLog("应用加载失败: ${e.message}", LogType.ERROR)
+                    }
+                } catch (e: Exception) {
+                    connectionStatus = ConnectionStatus.DISCONNECTED
+                    addLog("连接失败: ${e.message}", LogType.ERROR)
+                    showToast(context, "连接失败: ${e.message}")
+                }
             }
+        }
+    }
+
+    val onWatchfacesUpdate: (List<Watchface>) -> Unit = remember {
+        { newItems: List<Watchface> ->
+            watchfaces.clear()
+            watchfaces.addAll(newItems)
+        }
+    }
+
+    val onAppsUpdate: (List<InstalledApp>) -> Unit = remember {
+        { newItems: List<InstalledApp> ->
+            apps.clear()
+            apps.addAll(newItems)
         }
     }
 
@@ -342,15 +360,9 @@ private fun AppContent(modifier: Modifier = Modifier) {
                             }
                             item {
                                 when (activeTab) {
-                                    0 -> WatchfaceSection(watchfaces, deviceSession, manager, addLog) { newItems ->
-                                        watchfaces.clear()
-                                        watchfaces.addAll(newItems)
-                                    }
+                                    0 -> WatchfaceSection(watchfaces, deviceSession, manager, addLog, onWatchfacesUpdate)
 
-                                    1 -> AppSection(apps, deviceSession, manager, addLog) { newItems ->
-                                        apps.clear()
-                                        apps.addAll(newItems)
-                                    }
+                                    1 -> AppSection(apps, deviceSession, manager, addLog, onAppsUpdate)
 
                                     2 -> InstallSection(
                                         deviceSession,
