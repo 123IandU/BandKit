@@ -37,12 +37,10 @@ actual suspend fun importSavedDevicesFromFile(context: Any): List<SavedDevice>? 
 
 actual fun extractFileIdentifier(fileName: String, fileData: ByteArray): String? = null
 
-actual fun detectFileType(fileName: String, fileData: ByteArray): Int {
-    return when {
-        fileName.endsWith(".rpk", true) -> 64
-        fileName.endsWith(".bin", true) -> 16
-        else -> 16
-    }
+actual fun detectFileType(fileName: String, fileData: ByteArray): Int = when {
+    fileName.endsWith(".rpk", true) -> 64
+    fileName.endsWith(".bin", true) -> 16
+    else -> 16
 }
 
 actual fun showToast(context: Any, message: String) {}

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.bandkit.app
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -22,11 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.foundation.clickable
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bandkit.app.core.loadShowLogs
 import com.bandkit.app.core.LocalPlatformContext
+import com.bandkit.app.core.loadShowLogs
 import com.bandkit.app.core.saveShowLogs
 import com.bandkit.app.core.showToast
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -87,6 +87,7 @@ fun AboutScreen(
                             val remaining = 5 - tapCount
                             when {
                                 remaining > 0 -> showToast(context, "再点 $remaining 次显示操作日志")
+
                                 tapCount == 5 -> {
                                     val newValue = !loadShowLogs(context)
                                     saveShowLogs(context, newValue)
