@@ -8,5 +8,5 @@ object BuildConfig {
     const val TARGET_SDK = 37
     const val MIN_SDK = 24
     const val BUILD_TOOLS_VERSION = "37.0.0"
-    const val JDK_VERSION = 21
+    const val JDK_VERSION = 25
 }
