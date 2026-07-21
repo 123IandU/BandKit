@@ -39,6 +39,10 @@ actual fun detectFileType(fileName: String, fileData: ByteArray): Int = when {
 
 actual fun showToast(context: Any, message: String) {}
 
+actual fun md5hex(input: String): String = input.hashCode().toString(16)
+
+actual fun sha1Base64(input: String): String = ""
+
 actual fun saveLastDevice(context: Any, device: SavedDevice?) {}
 
 actual fun loadLastDevice(context: Any): SavedDevice? = null

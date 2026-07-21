@@ -224,6 +224,16 @@ actual fun showToast(context: Any, message: String) {
     } catch (_: Exception) { /* ignore */ }
 }
 
+actual fun md5hex(input: String): String {
+    val md = java.security.MessageDigest.getInstance("MD5")
+    return md.digest(input.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+}
+
+actual fun sha1Base64(input: String): String {
+    val md = java.security.MessageDigest.getInstance("SHA-1")
+    return java.util.Base64.getEncoder().encodeToString(md.digest(input.toByteArray()))
+}
+
 actual fun saveLastDevice(context: Any, device: SavedDevice?) {
     try {
         val ctx = context as android.content.Context

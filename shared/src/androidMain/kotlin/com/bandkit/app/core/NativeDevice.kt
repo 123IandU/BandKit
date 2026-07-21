@@ -51,4 +51,17 @@ object NativeDevice {
     external fun thirdpartyappSendMessage(addr: String, packageName: String, data: String): Boolean
     external fun thirdpartyappLaunch(addr: String, packageName: String, page: String): Boolean
     external fun thirdpartyappUninstall(addr: String, packageName: String): Boolean
+
+    // ======== Mi Fitness API 加密（Rust 实现） ========
+    /** 生成 Mi Fitness API nonce */
+    external fun miGenerateNonce(timeDiffMs: Long): String
+    /** 加密请求参数，返回 JSON map */
+    external fun miEncryptParams(
+        method: String, signingPath: String, paramsJson: String,
+        nonceB64: String, ssecurityB64: String,
+    ): String
+    /** 解密响应体 */
+    external fun miDecryptResponse(bodyB64: String, nonceB64: String, ssecurityB64: String): String?
+    /** 派生 RC4 密钥 */
+    external fun miDeriveRc4Key(ssecurityB64: String, nonceB64: String): String
 }

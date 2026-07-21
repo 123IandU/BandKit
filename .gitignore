@@ -49,3 +49,4 @@ tools/
 ANDROID_JNI_INTEGRATION_GUIDE.md
 LICENSE_astrobox.txt
 /docs/superpowers/specs/2026-07-18-quickjs-script-engine-design.md
+/docs/superpowers/plans/2026-07-20-performance-optimization.md

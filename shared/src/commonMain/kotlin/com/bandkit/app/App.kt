@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bandkit.app.core.BandBurgManager
@@ -56,6 +57,9 @@ import com.bandkit.app.core.formatTimestamp
 import com.bandkit.app.core.importSavedDevicesFromFile
 import com.bandkit.app.core.initBandBurgContext
 import com.bandkit.app.core.launchAboutActivity
+import com.bandkit.app.core.md5hex
+import com.bandkit.app.core.MiClient
+import com.bandkit.app.core.sha1Base64
 import com.bandkit.app.core.loadLastDevice
 import com.bandkit.app.core.loadSavedDevices
 import com.bandkit.app.core.loadShowLogs
@@ -109,16 +113,33 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import kotlin.time.Duration.Companion.seconds
+import com.bandkit.app.models.XiaomiDeviceInfo
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.encodeToString
+import top.yukonga.miuix.kmp.basic.TextField
+
+
+
 
 @Composable
-fun App(modifier: Modifier = Modifier) {
+fun App(
+    modifier: Modifier = Modifier,
+    fetchMiDevices: (suspend (ssec: String, serviceToken: String, cUid: String) -> List<XiaomiDeviceInfo>)? = null,
+) {
     PlatformContextProvider {
-        AppContent(modifier)
+        AppContent(modifier, fetchMiDevices)
     }
 }
 
 @Composable
-private fun AppContent(modifier: Modifier = Modifier) {
+private fun AppContent(
+    modifier: Modifier = Modifier,
+    fetchMiDevices: (suspend (String, String, String) -> List<XiaomiDeviceInfo>)? = null,
+) {
     val context = LocalPlatformContext.current
     val scope = rememberCoroutineScope()
     val manager = remember { createBandBurgManager() }
@@ -160,6 +181,7 @@ private fun AppContent(modifier: Modifier = Modifier) {
 
     var showAddDeviceDialog by remember { mutableStateOf(false) }
     var showSavedDevicesSheet by remember { mutableStateOf(false) }
+    var showMiLogin by remember { mutableStateOf(false) }
     var deviceFormTab by remember { mutableIntStateOf(0) }
     var deviceName by remember { mutableStateOf("") }
     var deviceAddr by remember { mutableStateOf("") }
@@ -466,6 +488,11 @@ private fun AppContent(modifier: Modifier = Modifier) {
                                         summary = "v${AppBuildConfig.VERSION_NAME}",
                                         onClick = { launchAboutActivity(context) },
                                     )
+                                    ArrowPreference(
+                                        title = "小米账号登录",
+                                        summary = "从小米健康获取设备信息",
+                                        onClick = { showMiLogin = true },
+                                    )
                                 }
                             }
                         }
@@ -592,6 +619,322 @@ private fun AppContent(modifier: Modifier = Modifier) {
                     onDismiss = { showSavedDevicesSheet = false },
                 )
             }
+            if (showMiLogin) {
+                MiLoginScreen(
+                    onBack = { showMiLogin = false },
+                    onDeviceAdded = { device ->
+                        savedDevices.add(device)
+                        saveSavedDevices(context, savedDevices)
+                        showToast(context, "设备 ${device.name} 已添加")
+                    },
+                    fetchMiDevices = fetchMiDevices,
+                )
+            }
         }
+    }
+}
+
+// ─── MiLoginScreen ───
+
+private class CaptchaRequiredException(val captchaUrl: String) : Exception("need captcha")
+
+@Composable
+internal fun MiLoginScreen(
+    onBack: () -> Unit,
+    onDeviceAdded: (SavedDevice) -> Unit,
+    fetchMiDevices: (suspend (ssec: String, serviceToken: String, cUid: String) -> List<XiaomiDeviceInfo>)? = null,
+) {
+    val scope = rememberCoroutineScope()
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var statusText by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorText by remember { mutableStateOf("") }
+    var devices by remember { mutableStateOf<List<XiaomiDeviceInfo>>(emptyList()) }
+    var loggedIn by remember { mutableStateOf(false) }
+    var captchaUrl by remember { mutableStateOf("") }
+    var captchaResult by remember { mutableStateOf("") }
+    var showCaptchaDialog by remember { mutableStateOf(false) }
+
+    fun startLogin() {
+        if (email.isBlank() || password.isBlank()) {
+            errorText = "请输入账号和密码"
+            return
+        }
+        isLoading = true
+        errorText = ""
+        statusText = ""
+        captchaUrl = ""
+        captchaResult = ""
+        showCaptchaDialog = false
+        scope.launch {
+            try {
+                doLogin(email, password,
+                    onStatus = { statusText = it },
+                    onDevices = {
+                        devices = it
+                        loggedIn = true
+                        statusText = "登录成功"
+                    },
+                    onError = {
+                        errorText = it
+                        isLoading = false
+                    },
+                    onCaptchaRequired = { url ->
+                        captchaUrl = url
+                        showCaptchaDialog = true
+                        isLoading = false
+                    },
+                    fetchMiDevices = fetchMiDevices,
+                )
+            } catch (e: Exception) {
+                if (e is CaptchaRequiredException) {
+                    captchaUrl = e.captchaUrl
+                    showCaptchaDialog = true
+                } else {
+                    errorText = e.message ?: "未知错误"
+                }
+                isLoading = false
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            SmallTopAppBar(
+                title = "小米账号登录",
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(imageVector = MiuixIcons.Back, contentDescription = "返回")
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 16.dp),
+        ) {
+            if (showCaptchaDialog) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("需要验证码验证", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("请复制以下链接在浏览器中打开，完成验证后粘贴返回的地址：", fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(4.dp))
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = captchaUrl,
+                        modifier = Modifier.padding(8.dp),
+                        fontSize = 11.sp,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                TextField(
+                    value = captchaResult,
+                    onValueChange = { captchaResult = it },
+                    label = "验证回调 URL",
+                    singleLine = true,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        // After captcha, the redirect URL contains serviceToken
+                        // Re-extract and continue flow
+                        showCaptchaDialog = false
+                        isLoading = true
+                        scope.launch {
+                            try {
+                                doLogin(email, password,
+                                    onStatus = { statusText = it },
+                                    onDevices = {
+                                        devices = it
+                                        loggedIn = true
+                                        statusText = "登录成功"
+                                    },
+                                    onError = {
+                                        errorText = it
+                                        isLoading = false
+                                    },
+                                    onCaptchaRequired = { url ->
+                                        captchaUrl = url
+                                        showCaptchaDialog = true
+                                        isLoading = false
+                                    },
+                                    fetchMiDevices = fetchMiDevices,
+                                )
+                            } catch (e: Exception) {
+                                errorText = e.message ?: "未知错误"
+                                isLoading = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                ) {
+                    Text("继续")
+                }
+            } else if (!loggedIn) {
+                Spacer(modifier = Modifier.height(24.dp))
+                TextField(
+                    value = email,
+                    onValueChange = { email = it; errorText = "" },
+                    label = "小米账号（邮箱）",
+                    singleLine = true,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                TextField(
+                    value = password,
+                    onValueChange = { password = it; errorText = "" },
+                    label = "密码",
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = { startLogin() },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    enabled = !isLoading,
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("登录")
+                    }
+                }
+                if (statusText.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(statusText, fontSize = 13.sp)
+                }
+                if (errorText.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(errorText, fontSize = 13.sp, color = Color(0xFFE53935))
+                }
+            } else {
+                Spacer(modifier = Modifier.height(16.dp))
+                Text("设备列表", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                if (devices.isEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("未找到设备", fontSize = 14.sp)
+                } else {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                        items(devices) { dev ->
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(dev.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        Text("MAC: ${dev.mac}", fontSize = 11.sp)
+                                        Text("authKey: ${dev.authKey.take(12)}...", fontSize = 11.sp)
+                                    }
+                                    Button(
+                                        onClick = {
+                                            val saved = SavedDevice(
+                                                id = currentTimeMillis().toString(),
+                                                name = dev.name,
+                                                addr = dev.mac,
+                                                authkey = dev.authKey,
+                                                connectType = "SPP",
+                                            )
+                                            onDeviceAdded(saved)
+                                        },
+                                        colors = ButtonDefaults.buttonColorsPrimary(),
+                                    ) {
+                                        Text("添加")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── doLogin ───
+
+private suspend fun doLogin(
+    email: String,
+    password: String,
+    onStatus: (String) -> Unit,
+    onDevices: (List<XiaomiDeviceInfo>) -> Unit,
+    onError: (String) -> Unit,
+    onCaptchaRequired: (String) -> Unit,
+    fetchMiDevices: (suspend (String, String, String) -> List<XiaomiDeviceInfo>)? = null,
+) {
+    val deviceId = "an_" + md5hex(email)
+    val userAgent = "Mozilla/5.0 (Linux; Android 12; Pixel 4 Build/SP1A.210812.016.C1; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/131.0.6778.200 Mobile Safari/537.36"
+
+    // Step 1: GET serviceLogin
+    onStatus("正在获取登录参数...")
+    val step1 = MiClient.get(
+        url = "https://account.xiaomi.com/pass/serviceLogin?_json=true&sid=miothealth&_locale=en_US",
+        headers = mapOf("User-Agent" to userAgent),
+        cookies = mapOf("userId" to email, "deviceId" to deviceId),
+    )
+    val body1 = step1.body.removePrefix("&&&START&&&")
+    val json1 = Json.parseToJsonElement(body1).jsonObject
+    val sign = json1["_sign"]?.jsonPrimitive?.content ?: throw Exception("无法获取登录参数 (_sign)")
+    val qs = json1["qs"]?.jsonPrimitive?.content ?: throw Exception("无法获取登录参数 (qs)")
+    val callback = json1["callback"]?.jsonPrimitive?.content ?: throw Exception("无法获取登录参数 (callback)")
+
+    // Step 2: POST serviceLoginAuth2
+    onStatus("正在验证账号...")
+    val passwordHash = md5hex(password).uppercase()
+    val step2 = MiClient.post(
+        url = "https://account.xiaomi.com/pass/serviceLoginAuth2",
+        data = mapOf(
+            "qs" to qs,
+            "callback" to callback,
+            "_json" to "true",
+            "_sign" to sign,
+            "user" to email,
+            "hash" to passwordHash,
+            "sid" to "miothealth",
+            "_locale" to "en_US",
+        ),
+        headers = mapOf("User-Agent" to userAgent, "Content-Type" to "application/x-www-form-urlencoded"),
+        cookies = mapOf("deviceId" to deviceId),
+    )
+    val body2 = step2.body.removePrefix("&&&START&&&")
+    val json2 = Json.parseToJsonElement(body2).jsonObject
+    val code = json2["code"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0
+
+    if (code != 0) {
+        val captchaUrl = json2["captcha_url"]?.jsonPrimitive?.content
+            ?: throw Exception("登录需要验证码但无法获取验证码URL")
+        onCaptchaRequired(captchaUrl)
+        return
+    }
+
+    val ssec = json2["ssecurity"]?.jsonPrimitive?.content ?: throw Exception("认证失败: 无 ssecurity")
+    val nonce = json2["nonce"]?.jsonPrimitive?.contentOrNull ?: ""
+    val uid = json2["userId"]?.jsonPrimitive?.contentOrNull ?: ""
+    val cUid = json2["cUserId"]?.jsonPrimitive?.contentOrNull ?: ""
+    val location = json2["location"]?.jsonPrimitive?.content ?: throw Exception("认证失败: 无 location")
+
+    // Step 3: GET location to get serviceToken
+    onStatus("正在获取服务令牌...")
+    val clientSign = sha1Base64("nonce=${nonce}&${ssec}")
+    val step3 = MiClient.get(
+        url = "$location&clientSign=$clientSign",
+        cookies = mapOf("deviceId" to deviceId),
+    )
+    val serviceToken = step3.cookies["serviceToken"] ?: throw Exception("无法获取 serviceToken")
+
+    // Step 4: Get devices via encrypted API (platform-specific)
+    onStatus("正在获取设备列表...")
+    if (fetchMiDevices != null) {
+        val devices = fetchMiDevices(ssec, serviceToken, cUid)
+        onDevices(devices)
+    } else {
+        // No platform fetch function available — return empty list
+        onDevices(emptyList())
     }
 }

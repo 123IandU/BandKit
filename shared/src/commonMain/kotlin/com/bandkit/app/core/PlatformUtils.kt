@@ -33,6 +33,12 @@ expect fun detectFileType(fileName: String, fileData: ByteArray): Int
 /** 显示 Toast 提示 */
 expect fun showToast(context: Any, message: String)
 
+/** MD5 哈希，返回 32 位小写 hex */
+expect fun md5hex(input: String): String
+
+/** SHA1 哈希，返回 base64 */
+expect fun sha1Base64(input: String): String
+
 /** 保存最后一次连接的设备，用于启动时自动连接 */
 expect fun saveLastDevice(context: Any, device: com.bandkit.app.models.SavedDevice?)
 
